@@ -12,12 +12,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "datamodel-code-generator>=0.31,<0.32",
+  "datamodel-code-generator>=0.55,<0.56",
   "httpx>=0.28,<0.29",
-  "pytest>=8.3,<9",
-  "pytest-cov>=5,<6",
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
   "pyyaml>=6,<7",
-  "ruff>=0.11,<0.12",
+  "ruff>=0.15,<0.16",
+  "tach>=0.34,<0.35",
 ]
 
 [tool.uv.sources]
@@ -52,3 +53,83 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.tach]
+exclude = [
+  "**/*__pycache__",
+  "**/*egg-info",
+  "**/docs",
+  "**/tests",
+  "**/venv",
+]
+source_roots = [
+  "services/platform-api/src",
+  "services/temporal-worker/src",
+  "services/eval-runner/src",
+  "libs/py/contracts-generated/src",
+  "libs/py/domain-kernel/src",
+  "libs/py/testkit/src",
+]
+forbid_circular_dependencies = true
+root_module = "ignore"
+
+[[tool.tach.modules]]
+path = "cvm_contracts_generated"
+depends_on = []
+
+[[tool.tach.modules]]
+path = "cvm_domain_kernel"
+depends_on = []
+
+[[tool.tach.modules]]
+path = "cvm_platform.settings"
+depends_on = []
+
+[[tool.tach.modules]]
+path = "cvm_platform.domain"
+depends_on = ["cvm_domain_kernel"]
+
+[[tool.tach.modules]]
+path = "cvm_platform.application"
+depends_on = [
+  "cvm_platform.domain",
+  "cvm_domain_kernel",
+]
+
+[[tool.tach.modules]]
+path = "cvm_platform.infrastructure"
+depends_on = [
+  "cvm_platform.application",
+  "cvm_platform.domain",
+  "cvm_platform.settings",
+  "cvm_domain_kernel",
+]
+
+[[tool.tach.modules]]
+path = "cvm_platform.api"
+depends_on = [
+  "cvm_contracts_generated",
+  "cvm_platform.application",
+  "cvm_platform.domain",
+  "cvm_platform.infrastructure",
+  "cvm_platform.settings",
+]
+
+[[tool.tach.modules]]
+path = "cvm_testkit"
+depends_on = []
+
+[[tool.tach.modules]]
+path = "cvm_eval_runner"
+depends_on = ["cvm_testkit"]
+
+[[tool.tach.modules]]
+path = "cvm_worker"
+depends_on = [
+  "cvm_platform.application",
+  "cvm_platform.infrastructure",
+  "cvm_platform.settings",
+]
+
+[tool.tach.external]
+exclude = ["psycopg", "uvicorn"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from cvm_contracts_generated.platform_api import (
     CandidateDetailResponse,
@@ -19,7 +20,6 @@ from cvm_contracts_generated.platform_api import (
     CreateKeywordDraftJobResponse,
     CreateSearchRunRequest,
     CreateSearchRunResponse,
-    EvidenceRef,
     OpsSummaryResponse,
     ResumeAnalysis,
     ResumeSnapshot,
@@ -27,11 +27,14 @@ from cvm_contracts_generated.platform_api import (
     SaveVerdictResponse,
     SearchRunPagesResponse,
     SearchRunStatusResponse,
+    TemporalSearchRunDiagnosticResponse,
     VerdictRecord,
 )
 from cvm_platform.api.dependencies import service_dependency
 from cvm_platform.application.service import PlatformService
+from cvm_platform.application.dto import CandidateDetailRecord, OpsSummaryRecord
 from cvm_platform.domain.types import ConditionPlanDraftData, EvidenceRef as DraftEvidenceRef
+from cvm_platform.infrastructure.temporal_diagnostics import inspect_search_run
 from cvm_platform.settings.config import settings
 
 
@@ -60,8 +63,8 @@ def create_keyword_draft_job(
     request: CreateKeywordDraftJobRequest,
     service: PlatformService = Depends(service_dependency),
 ) -> CreateKeywordDraftJobResponse:
-    job, plan = service.create_keyword_draft_job(case_id, request.jdVersionId, request.modelVersion, request.promptVersion)
-    return CreateKeywordDraftJobResponse(jobId=job.id, status=job.status, planId=plan.id, draft=job.draft_payload)
+    result = service.create_keyword_draft_job(case_id, request.jdVersionId, request.modelVersion, request.promptVersion)
+    return CreateKeywordDraftJobResponse(jobId=result.job.id, status=result.job.status, planId=result.plan.id, draft=result.job.draft_payload)
 
 
 @router.post("/condition-plans/{plan_id}:confirm")
@@ -87,17 +90,17 @@ async def create_search_run(
     service: PlatformService = Depends(service_dependency),
 ) -> CreateSearchRunResponse:
     run = service.create_search_run(request.caseId, request.planId, request.pageBudget, request.idempotencyKey)
-    if settings.use_temporal:
-        client = await Client.connect(settings.temporal_host)
+    client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
+    try:
         await client.start_workflow(
             "SearchRunWorkflow",
             run.id,
-            id=f"search-run-{run.id}",
+            id=run.workflow_id,
             task_queue=settings.temporal_task_queue,
         )
-        return CreateSearchRunResponse(runId=run.id, status=run.status)
-    executed = service.execute_search_run(run.id)
-    return CreateSearchRunResponse(runId=executed.id, status=executed.status)
+    except WorkflowAlreadyStartedError:
+        pass
+    return CreateSearchRunResponse(runId=run.id, status=run.status)
 
 
 @router.get("/search-runs/{run_id}")
@@ -139,23 +142,27 @@ def get_search_run_pages(
 
 @router.get("/case-candidates/{candidate_id}")
 def get_case_candidate(candidate_id: str, service: PlatformService = Depends(service_dependency)) -> CandidateDetailResponse:
-    candidate, snapshot, analysis, history = service.get_candidate_detail(candidate_id)
+    detail = service.get_candidate_detail(candidate_id)
+    return _candidate_detail_response(detail)
+
+
+def _candidate_detail_response(detail: CandidateDetailRecord) -> CandidateDetailResponse:
     return CandidateDetailResponse(
         candidate={
-            "candidateId": candidate.id,
-            "externalIdentityId": candidate.external_identity_id,
-            "name": candidate.name,
-            "title": candidate.title,
-            "company": candidate.company,
-            "location": candidate.location,
-            "summary": candidate.summary,
+            "candidateId": detail.candidate.id,
+            "externalIdentityId": detail.candidate.external_identity_id,
+            "name": detail.candidate.name,
+            "title": detail.candidate.title,
+            "company": detail.candidate.company,
+            "location": detail.candidate.location,
+            "summary": detail.candidate.summary,
         },
-        resumeSnapshot=ResumeSnapshot(id=snapshot.id, content=snapshot.payload),
+        resumeSnapshot=ResumeSnapshot(id=detail.resume_snapshot.id, content=detail.resume_snapshot.payload),
         aiAnalysis=ResumeAnalysis(
-            status=analysis.status if analysis else "pending",
-            summary=analysis.summary if analysis else "",
-            evidenceSpans=analysis.evidence_spans if analysis else [],
-            riskFlags=analysis.risk_flags if analysis else [],
+            status=detail.ai_analysis.status if detail.ai_analysis else "pending",
+            summary=detail.ai_analysis.summary if detail.ai_analysis else "",
+            evidenceSpans=detail.ai_analysis.evidence_spans if detail.ai_analysis else [],
+            riskFlags=detail.ai_analysis.risk_flags if detail.ai_analysis else [],
         ),
         verdictHistory=[
             VerdictRecord(
@@ -165,7 +172,7 @@ def get_case_candidate(candidate_id: str, service: PlatformService = Depends(ser
                 actorId=item.actor_id,
                 createdAt=item.created_at.isoformat(),
             )
-            for item in history
+            for item in detail.verdict_history
         ],
     )
 
@@ -202,7 +209,35 @@ def create_export(
 
 @router.get("/ops/summary")
 def get_ops_summary(service: PlatformService = Depends(service_dependency)) -> OpsSummaryResponse:
-    return OpsSummaryResponse.model_validate(service.get_ops_summary())
+    return _ops_summary_response(service.get_ops_summary())
+
+
+def _ops_summary_response(summary: OpsSummaryRecord) -> OpsSummaryResponse:
+    return OpsSummaryResponse(
+        queue=summary.queue,
+        failures=summary.failures,
+        latency=summary.latency,
+        version={
+            "api": summary.version.api,
+            "apiBuildId": summary.version.api_build_id,
+            "workerBuildId": summary.version.worker_build_id,
+            "externalCts": summary.version.external_cts,
+            "temporalNamespace": summary.version.temporal_namespace,
+            "temporalUiUrl": summary.version.temporal_ui_url,
+            "temporalVisibilityBackend": summary.version.temporal_visibility_backend,
+        },
+        metrics=[{"name": metric.name, "value": metric.value} for metric in summary.metrics],
+    )
+
+
+@router.get("/ops/temporal/search-runs/{run_id}")
+async def get_search_run_temporal_diagnostic(
+    run_id: str,
+    service: PlatformService = Depends(service_dependency),
+) -> TemporalSearchRunDiagnosticResponse:
+    run = service.get_search_run(run_id)
+    diagnostic = await inspect_search_run(run, settings)
+    return TemporalSearchRunDiagnosticResponse.model_validate(diagnostic)
 
 
 @router.post("/evals/runs")

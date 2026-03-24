@@ -22,6 +22,7 @@ import type { SaveVerdictRequest } from '../models/SaveVerdictRequest';
 import type { SaveVerdictResponse } from '../models/SaveVerdictResponse';
 import type { SearchRunPagesResponse } from '../models/SearchRunPagesResponse';
 import type { SearchRunStatusResponse } from '../models/SearchRunStatusResponse';
+import type { TemporalSearchRunDiagnosticResponse } from '../models/TemporalSearchRunDiagnosticResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -233,6 +234,24 @@ export class DefaultService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/ops/summary',
+        });
+    }
+    /**
+     * Get Temporal diagnostic for a search run
+     * @returns TemporalSearchRunDiagnosticResponse Temporal search run diagnostic
+     * @throws ApiError
+     */
+    public static getSearchRunTemporalDiagnostic({
+        runId,
+    }: {
+        runId: string,
+    }): CancelablePromise<TemporalSearchRunDiagnosticResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/ops/temporal/search-runs/{runId}',
+            path: {
+                'runId': runId,
+            },
         });
     }
     /**

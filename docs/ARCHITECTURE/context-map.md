@@ -2,7 +2,9 @@
 
 ## Runtime Units
 
-- `apps/web-console`: Angular shell for `/cases`, `/agents`, `/ops`, `/evals`.
+- `apps/web-user`: User-facing recruiting workbench.
+- `apps/web-ops`: Internal monitoring web.
+- `apps/web-evals`: Internal evaluation web.
 - `services/platform-api`: FastAPI API and orchestration boundary.
 - `services/temporal-worker`: Long-running workflow execution.
 - `postgres`: Source of record for business data and projections.

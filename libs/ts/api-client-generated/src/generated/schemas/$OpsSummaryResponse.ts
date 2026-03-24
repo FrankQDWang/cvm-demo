@@ -29,11 +29,7 @@ export const $OpsSummaryResponse = {
             isRequired: true,
         },
         version: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+            type: 'OpsVersionInfo',
             isRequired: true,
         },
         metrics: {

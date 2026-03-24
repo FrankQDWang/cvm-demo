@@ -11,4 +11,5 @@
 - `PUT /api/v1/case-candidates/{candidateId}/verdict`: saveCandidateVerdict
 - `POST /api/v1/exports`: createExport
 - `GET /api/v1/ops/summary`: getOpsSummary
+- `GET /api/v1/ops/temporal/search-runs/{runId}`: getSearchRunTemporalDiagnostic
 - `POST /api/v1/evals/runs`: createEvalRun

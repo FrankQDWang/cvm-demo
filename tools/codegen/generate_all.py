@@ -14,6 +14,7 @@ EXTERNAL_CTS = ROOT / "contracts/external/cts.validated.yaml"
 PY_OUT = ROOT / "libs/py/contracts-generated/src/cvm_contracts_generated/platform_api.py"
 TS_OUT = ROOT / "libs/ts/api-client-generated/src/generated"
 TS_INDEX = ROOT / "libs/ts/api-client-generated/src/index.ts"
+TS_PACKAGE = ROOT / "libs/ts/api-client-generated/package.json"
 DOCS_OUT = ROOT / "docs/_generated"
 TS_CANCELABLE = TS_OUT / "core/CancelablePromise.ts"
 
@@ -120,6 +121,20 @@ def generate_ts_client() -> None:
         "export * from './generated';\n"
         "export { OpenAPI } from './generated/core/OpenAPI';\n"
         "export { DefaultService } from './generated/services/DefaultService';\n",
+        encoding="utf-8",
+    )
+    TS_PACKAGE.write_text(
+        "{\n"
+        '  "name": "@cvm/api-client-generated",\n'
+        '  "version": "0.1.0",\n'
+        '  "private": true,\n'
+        '  "type": "module",\n'
+        '  "sideEffects": false,\n'
+        '  "exports": {\n'
+        '    ".": "./src/index.ts"\n'
+        "  },\n"
+        '  "types": "./src/index.ts"\n'
+        "}\n",
         encoding="utf-8",
     )
 

@@ -24,7 +24,7 @@ jobs:
       - name: Sync Python workspace
         run: uv sync
       - name: Install Node dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
       - name: Validate
         run: make validate
       - name: Test

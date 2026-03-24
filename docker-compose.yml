@@ -3,35 +3,63 @@ services:
     image: postgres:16-alpine
     container_name: cvm-postgres
     environment:
-      POSTGRES_USER: cvm
-      POSTGRES_PASSWORD: cvm
-      POSTGRES_DB: cvm
+      POSTGRES_USER: ${CVM_POSTGRES_USER:-cvm}
+      POSTGRES_PASSWORD: ${CVM_POSTGRES_PASSWORD:-cvm}
+      POSTGRES_DB: ${CVM_POSTGRES_DB:-cvm}
     ports:
-      - "5432:5432"
+      - "${CVM_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cvm -d cvm"]
+      test: ["CMD-SHELL", "pg_isready -U ${CVM_POSTGRES_USER:-cvm} -d ${CVM_POSTGRES_DB:-cvm}"]
       interval: 5s
       timeout: 5s
       retries: 20
 
+  opensearch:
+    image: opensearchproject/opensearch:${CVM_OPENSEARCH_VERSION:-2.19.1}
+    container_name: cvm-opensearch
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+    ports:
+      - "${CVM_OPENSEARCH_PORT:-9200}:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   temporal:
-    image: temporalio/auto-setup:1.29.1
+    image: temporalio/auto-setup:1.29.4
     container_name: cvm-temporal
     depends_on:
       postgres:
         condition: service_healthy
+      opensearch:
+        condition: service_healthy
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: cvm
-      POSTGRES_PWD: cvm
+      POSTGRES_USER: ${CVM_POSTGRES_USER:-cvm}
+      POSTGRES_PWD: ${CVM_POSTGRES_PASSWORD:-cvm}
       POSTGRES_SEEDS: postgres
-      POSTGRES_DB: cvm
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development.yaml
+      POSTGRES_DB: ${CVM_POSTGRES_DB:-cvm}
+      ENABLE_ES: "true"
+      ES_SEEDS: opensearch
+      ES_PORT: 9200
+      ES_VERSION: v7
+      ES_VIS_INDEX: ${CVM_TEMPORAL_VISIBILITY_INDEX:-temporal_visibility_v1_dev}
+      DYNAMIC_CONFIG_FILE_PATH: /etc/temporal/config/dynamicconfig/development-sql.yaml
     ports:
-      - "7233:7233"
+      - "${CVM_TEMPORAL_PORT:-7233}:7233"
+    volumes:
+      - ./infra/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
     healthcheck:
       test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
       interval: 10s
@@ -39,16 +67,186 @@ services:
       retries: 20
 
   temporal-ui:
-    image: temporalio/ui:2.34.0
+    image: temporalio/ui:2.48.0
     container_name: cvm-temporal-ui
     depends_on:
       temporal:
         condition: service_started
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_UI_PORT: 8080
+      TEMPORAL_UI_PORT: ${CVM_TEMPORAL_UI_PORT:-8080}
     ports:
-      - "8080:8080"
+      - "${CVM_TEMPORAL_UI_PORT:-8080}:8080"
+
+  temporal-admin-tools:
+    image: temporalio/admin-tools:${CVM_TEMPORAL_ADMINTOOLS_VERSION:-1.29}
+    container_name: cvm-temporal-admin-tools
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - tail -f /dev/null
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/python-app.Dockerfile
+    container_name: cvm-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
+      CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
+      CVM_TEMPORAL_HOST: temporal:7233
+      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-search-runs}
+      CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
+      CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
+      CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
+      CVM_LLM_MODE: ${CVM_LLM_MODE:-stub}
+      CVM_LLM_PROVIDER: ${CVM_LLM_PROVIDER:-openai}
+      CVM_LLM_MODEL: ${CVM_LLM_MODEL:-gpt-5.4-mini}
+      CVM_LLM_TIMEOUT_SECONDS: ${CVM_LLM_TIMEOUT_SECONDS:-30}
+      CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-mock}
+      CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
+      CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
+      CVM_CTS_TENANT_SECRET: ${CVM_CTS_TENANT_SECRET:-}
+      CVM_CTS_TIMEOUT_SECONDS: ${CVM_CTS_TIMEOUT_SECONDS:-20}
+      CVM_ALLOW_SENSITIVE_EXPORT: ${CVM_ALLOW_SENSITIVE_EXPORT:-false}
+      CVM_EXPORTS_DIR: /app/var/exports
+      CVM_CORS_ORIGINS: http://localhost:${CVM_USER_WEB_PORT:-4200},http://127.0.0.1:${CVM_USER_WEB_PORT:-4200},http://localhost:${CVM_OPS_WEB_PORT:-4201},http://127.0.0.1:${CVM_OPS_WEB_PORT:-4201},http://localhost:${CVM_EVALS_WEB_PORT:-4202},http://127.0.0.1:${CVM_EVALS_WEB_PORT:-4202}
+    command:
+      - uv
+      - run
+      - uvicorn
+      - cvm_platform.main:app
+      - --factory
+      - --app-dir
+      - services/platform-api/src
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8010"
+    ports:
+      - "${CVM_API_PORT:-8010}:8010"
+    volumes:
+      - ./var/exports:/app/var/exports
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/v1/ops/summary')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/python-app.Dockerfile
+    container_name: cvm-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
+      CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
+      CVM_TEMPORAL_HOST: temporal:7233
+      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-search-runs}
+      CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
+      CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
+      CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
+      CVM_LLM_MODE: ${CVM_LLM_MODE:-stub}
+      CVM_LLM_PROVIDER: ${CVM_LLM_PROVIDER:-openai}
+      CVM_LLM_MODEL: ${CVM_LLM_MODEL:-gpt-5.4-mini}
+      CVM_LLM_TIMEOUT_SECONDS: ${CVM_LLM_TIMEOUT_SECONDS:-30}
+      CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-mock}
+      CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
+      CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
+      CVM_CTS_TENANT_SECRET: ${CVM_CTS_TENANT_SECRET:-}
+      CVM_CTS_TIMEOUT_SECONDS: ${CVM_CTS_TIMEOUT_SECONDS:-20}
+    command:
+      - uv
+      - run
+      - python
+      - -m
+      - cvm_worker.main
+
+  web-user:
+    build:
+      context: .
+      dockerfile: infra/docker/angular-web.Dockerfile
+      args:
+        APP_DIR: apps/web-user
+        APP_NAME: web-user
+    container_name: cvm-web-user
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${CVM_USER_WEB_PORT:-4200}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  web-ops:
+    build:
+      context: .
+      dockerfile: infra/docker/angular-web.Dockerfile
+      args:
+        APP_DIR: apps/web-ops
+        APP_NAME: web-ops
+    container_name: cvm-web-ops
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${CVM_OPS_WEB_PORT:-4201}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  web-evals:
+    build:
+      context: .
+      dockerfile: infra/docker/angular-web.Dockerfile
+      args:
+        APP_DIR: apps/web-evals
+        APP_NAME: web-evals
+    container_name: cvm-web-evals
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${CVM_EVALS_WEB_PORT:-4202}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
 volumes:
   postgres_data:
+  opensearch_data:

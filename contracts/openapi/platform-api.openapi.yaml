@@ -216,6 +216,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpsSummaryResponse"
+  /api/v1/ops/temporal/search-runs/{runId}:
+    get:
+      operationId: getSearchRunTemporalDiagnostic
+      summary: Get Temporal diagnostic for a search run
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Temporal search run diagnostic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemporalSearchRunDiagnosticResponse"
   /api/v1/evals/runs:
     post:
       operationId: createEvalRun
@@ -560,6 +577,33 @@ components:
           type: string
         value:
           type: number
+    OpsVersionInfo:
+      type: object
+      required:
+        [
+          api,
+          apiBuildId,
+          workerBuildId,
+          externalCts,
+          temporalNamespace,
+          temporalUiUrl,
+          temporalVisibilityBackend,
+        ]
+      properties:
+        api:
+          type: string
+        apiBuildId:
+          type: string
+        workerBuildId:
+          type: string
+        externalCts:
+          type: string
+        temporalNamespace:
+          type: string
+        temporalUiUrl:
+          type: string
+        temporalVisibilityBackend:
+          type: string
     OpsSummaryResponse:
       type: object
       required: [queue, failures, latency, version, metrics]
@@ -574,12 +618,62 @@ components:
           type: object
           additionalProperties: true
         version:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/OpsVersionInfo"
         metrics:
           type: array
           items:
             $ref: "#/components/schemas/MetricItem"
+    TemporalSearchRunDiagnosticResponse:
+      type: object
+      required:
+        [
+          runId,
+          workflowId,
+          namespace,
+          taskQueue,
+          appStatus,
+          temporalExecutionFound,
+          visibilityIndexed,
+          visibilityBackend,
+          temporalUiUrl,
+        ]
+      properties:
+        runId:
+          type: string
+        workflowId:
+          type: string
+        namespace:
+          type: string
+        taskQueue:
+          type: string
+        appStatus:
+          type: string
+        temporalExecutionFound:
+          type: boolean
+        temporalExecutionStatus:
+          type:
+            - string
+            - "null"
+        visibilityIndexed:
+          type: boolean
+        visibilityBackend:
+          type: string
+        startedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        closedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        error:
+          type:
+            - string
+            - "null"
+        temporalUiUrl:
+          type: string
     CreateEvalRunRequest:
       type: object
       required: [suiteId, datasetId, targetVersion]

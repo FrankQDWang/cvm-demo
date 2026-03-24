@@ -5,11 +5,13 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
   "cvm-contracts-generated",
   "cvm-domain-kernel",
-  "fastapi>=0.116,<0.117",
-  "pydantic-settings>=2.10,<3",
-  "psycopg[binary]>=3.2,<4",
-  "sqlalchemy>=2.0,<3",
-  "uvicorn>=0.35,<0.36",
+  "fastapi>=0.135,<0.136",
+  "pydantic>=2.12,<3",
+  "pydantic-settings>=2.13,<3",
+  "psycopg[binary]>=3.3,<4",
+  "sqlalchemy>=2.0.48,<3",
+  "temporalio>=1.24,<2",
+  "uvicorn>=0.42,<0.43",
 ]
 
 [build-system]
