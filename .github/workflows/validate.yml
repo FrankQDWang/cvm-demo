@@ -12,11 +12,14 @@ jobs:
       - macOS
       - ARM64
       - local-cvm-demo
+    env:
+      AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/../_tool
+      RUNNER_TOOL_CACHE: ${{ runner.temp }}/../_tool
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Verify self-hosted Python
+        run: python3.12 --version
       - uses: pnpm/action-setup@v4
         with:
           version: 10.32.1
@@ -24,8 +27,8 @@ jobs:
         with:
           node-version: "22"
           cache: "pnpm"
-      - name: Install Python dependencies
-        run: pip install uv
+      - name: Verify uv
+        run: uv --version
       - name: Sync Python workspace
         run: uv sync
       - name: Install Node dependencies
