@@ -10,7 +10,9 @@ def api_base_url() -> str:
     override = os.getenv("CVM_TEST_API_BASE_URL") or os.getenv("CVM_API_BASE_URL")
     if override:
         return override.rstrip("/")
-    return f"http://127.0.0.1:{os.getenv('CVM_API_PORT', '8010')}"
+    host = os.getenv("CVM_API_HOST", "127.0.0.1")
+    port = os.getenv("CVM_API_PORT", "8010")
+    return f"http://{host}:{port}"
 
 
 def temporal_target() -> tuple[str, int]:
@@ -19,6 +21,15 @@ def temporal_target() -> tuple[str, int]:
         raw_host, _, raw_port = host.partition(":")
         return raw_host or "127.0.0.1", int(raw_port or "7233")
     return "127.0.0.1", int(os.getenv("CVM_TEMPORAL_PORT", "7233"))
+
+
+def opensearch_base_url() -> str:
+    override = os.getenv("CVM_OPENSEARCH_BASE_URL")
+    if override:
+        return override.rstrip("/")
+    host = os.getenv("CVM_OPENSEARCH_HOST", "127.0.0.1")
+    port = os.getenv("CVM_OPENSEARCH_PORT", "9200")
+    return f"http://{host}:{port}"
 
 
 def api_healthcheck() -> None:
@@ -47,8 +58,7 @@ def temporal_port_check() -> None:
 def opensearch_healthcheck() -> None:
     if os.getenv("CVM_TEMPORAL_VISIBILITY_BACKEND", "opensearch") != "opensearch":
         return
-    port = os.getenv("CVM_OPENSEARCH_PORT", "9200")
-    endpoint = f"http://127.0.0.1:{port}"
+    endpoint = opensearch_base_url()
     try:
         with httpx.Client(timeout=3.0, trust_env=False) as client:
             response = client.get(endpoint)

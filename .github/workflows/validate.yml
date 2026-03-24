@@ -1,5 +1,8 @@
 name: validate
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -9,28 +12,42 @@ jobs:
   validate:
     runs-on:
       - self-hosted
-      - macOS
+      - Linux
       - ARM64
-      - local-cvm-demo
+      - docker-cvm-demo
     env:
       UV_PYTHON: "3.12"
+      CVM_TEST_API_BASE_URL: "http://host.docker.internal:8010"
+      CVM_TEMPORAL_HOST: "host.docker.internal:7233"
+      CVM_OPENSEARCH_BASE_URL: "http://host.docker.internal:9200"
     steps:
       - uses: actions/checkout@v4
-      - name: Verify self-hosted Python
-        run: python3.12 --version
-      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-python@v5
         with:
-          version: 10.32.1
-      - uses: actions/setup-node@v4
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
         with:
-          node-version: "22"
-          cache: "pnpm"
-      - name: Verify uv
-        run: uv --version
+          python-version: "3.12"
+      - name: Install mise
+        run: |
+          curl -fsSL https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+      - name: Provision Node and pnpm
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mise trust --yes
+          mise install
+          mise exec -- node --version
+          mise exec -- corepack enable
+          mise exec -- corepack install
+          mise exec -- pnpm --version
       - name: Sync Python workspace
-        run: uv sync
+        run: uv sync --locked
       - name: Install Node dependencies
-        run: pnpm install --frozen-lockfile
+        run: mise exec -- pnpm install --frozen-lockfile
       - name: Validate
         run: make validate
       - name: Test
