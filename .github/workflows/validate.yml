@@ -13,8 +13,6 @@ jobs:
       - ARM64
       - local-cvm-demo
     env:
-      AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/../_tool
-      RUNNER_TOOL_CACHE: ${{ runner.temp }}/../_tool
       UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4
