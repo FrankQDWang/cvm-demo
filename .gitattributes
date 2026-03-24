@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.pdf binary
+
+docs/_generated/* linguist-generated=true
+libs/ts/api-client-generated/src/generated/* linguist-generated=true
+libs/py/contracts-generated/src/* linguist-generated=true

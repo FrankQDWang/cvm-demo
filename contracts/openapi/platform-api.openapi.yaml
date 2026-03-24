@@ -1,0 +1,600 @@
+openapi: 3.1.0
+info:
+  title: CVM Platform API
+  version: "0.1.0"
+  description: Local-first MVP boundary contract.
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/v1/cases:
+    post:
+      operationId: createCase
+      summary: Create a JD case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCaseRequest"
+      responses:
+        "200":
+          description: Case created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCaseResponse"
+  /api/v1/cases/{caseId}/jd-versions:
+    post:
+      operationId: createJdVersion
+      summary: Create a JD version
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJdVersionRequest"
+      responses:
+        "200":
+          description: JD version created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateJdVersionResponse"
+  /api/v1/cases/{caseId}/keyword-draft-jobs:
+    post:
+      operationId: createKeywordDraftJob
+      summary: Create a keyword draft
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKeywordDraftJobRequest"
+      responses:
+        "200":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateKeywordDraftJobResponse"
+  /api/v1/condition-plans/{planId}:confirm:
+    post:
+      operationId: confirmConditionPlan
+      summary: Confirm a condition plan
+      parameters:
+        - in: path
+          name: planId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmConditionPlanRequest"
+      responses:
+        "200":
+          description: Plan confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmConditionPlanResponse"
+  /api/v1/search-runs:
+    post:
+      operationId: createSearchRun
+      summary: Create a search run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSearchRunRequest"
+      responses:
+        "200":
+          description: Search run created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSearchRunResponse"
+  /api/v1/search-runs/{runId}:
+    get:
+      operationId: getSearchRun
+      summary: Get search run status
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search run status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchRunStatusResponse"
+  /api/v1/search-runs/{runId}/pages:
+    get:
+      operationId: getSearchRunPages
+      summary: Get search run pages
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: pageNo
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Page snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchRunPagesResponse"
+  /api/v1/case-candidates/{candidateId}:
+    get:
+      operationId: getCaseCandidate
+      summary: Get candidate detail
+      parameters:
+        - in: path
+          name: candidateId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Candidate detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateDetailResponse"
+  /api/v1/case-candidates/{candidateId}/verdict:
+    put:
+      operationId: saveCandidateVerdict
+      summary: Save a candidate verdict
+      parameters:
+        - in: path
+          name: candidateId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveVerdictRequest"
+      responses:
+        "200":
+          description: Verdict saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveVerdictResponse"
+  /api/v1/exports:
+    post:
+      operationId: createExport
+      summary: Create an export job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExportRequest"
+      responses:
+        "200":
+          description: Export job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateExportResponse"
+  /api/v1/ops/summary:
+    get:
+      operationId: getOpsSummary
+      summary: Get ops summary
+      responses:
+        "200":
+          description: Ops summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpsSummaryResponse"
+  /api/v1/evals/runs:
+    post:
+      operationId: createEvalRun
+      summary: Create an eval run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEvalRunRequest"
+      responses:
+        "200":
+          description: Eval run created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateEvalRunResponse"
+components:
+  schemas:
+    CreateCaseRequest:
+      type: object
+      required: [title, ownerTeamId]
+      properties:
+        title:
+          type: string
+        ownerTeamId:
+          type: string
+    CreateCaseResponse:
+      type: object
+      required: [caseId, status]
+      properties:
+        caseId:
+          type: string
+        status:
+          type: string
+    CreateJdVersionRequest:
+      type: object
+      required: [rawText, source]
+      properties:
+        rawText:
+          type: string
+        source:
+          type: string
+    CreateJdVersionResponse:
+      type: object
+      required: [jdVersionId, versionNo, status]
+      properties:
+        jdVersionId:
+          type: string
+        versionNo:
+          type: integer
+        status:
+          type: string
+    EvidenceRef:
+      type: object
+      required: [label, excerpt]
+      properties:
+        label:
+          type: string
+        excerpt:
+          type: string
+    StructuredFilters:
+      type: object
+      additionalProperties: true
+      properties:
+        location:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        degree:
+          type: integer
+        schoolType:
+          type: integer
+        workExperienceRange:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    ConditionPlanDraft:
+      type: object
+      required: [mustTerms, shouldTerms, excludeTerms, structuredFilters, evidenceRefs]
+      properties:
+        mustTerms:
+          type: array
+          items:
+            type: string
+        shouldTerms:
+          type: array
+          items:
+            type: string
+        excludeTerms:
+          type: array
+          items:
+            type: string
+        structuredFilters:
+          $ref: "#/components/schemas/StructuredFilters"
+        evidenceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceRef"
+    CreateKeywordDraftJobRequest:
+      type: object
+      required: [jdVersionId, modelVersion, promptVersion]
+      properties:
+        jdVersionId:
+          type: string
+        modelVersion:
+          type: string
+        promptVersion:
+          type: string
+    CreateKeywordDraftJobResponse:
+      type: object
+      required: [jobId, status, planId, draft]
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+        planId:
+          type: string
+        draft:
+          $ref: "#/components/schemas/ConditionPlanDraft"
+    ConfirmConditionPlanRequest:
+      allOf:
+        - $ref: "#/components/schemas/ConditionPlanDraft"
+        - type: object
+          required: [confirmedBy]
+          properties:
+            confirmedBy:
+              type: string
+    ConfirmConditionPlanResponse:
+      type: object
+      required: [planId, status, normalizedQuery]
+      properties:
+        planId:
+          type: string
+        status:
+          type: string
+        normalizedQuery:
+          type: object
+          additionalProperties: true
+    CreateSearchRunRequest:
+      type: object
+      required: [caseId, planId, pageBudget, idempotencyKey]
+      properties:
+        caseId:
+          type: string
+        planId:
+          type: string
+        pageBudget:
+          type: integer
+        idempotencyKey:
+          type: string
+    CreateSearchRunResponse:
+      type: object
+      required: [runId, status]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+    SearchRunStatusResponse:
+      type: object
+      required: [runId, status, progress, pageCount]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        progress:
+          type: number
+        pageCount:
+          type: integer
+        errorSummary:
+          type: string
+    CandidateCard:
+      type: object
+      required: [candidateId, externalIdentityId, name, title, company, location]
+      properties:
+        candidateId:
+          type: string
+        externalIdentityId:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        company:
+          type: string
+        location:
+          type: string
+        summary:
+          type: string
+    SearchRunPageSnapshot:
+      type: object
+      required: [pageNo, status, fetchedAt, candidates, total]
+      properties:
+        pageNo:
+          type: integer
+        status:
+          type: string
+        fetchedAt:
+          type: string
+          format: date-time
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateCard"
+        total:
+          type: integer
+        errorCode:
+          type: string
+        errorMessage:
+          type: string
+    SearchRunPagesResponse:
+      type: object
+      required: [runId, snapshots]
+      properties:
+        runId:
+          type: string
+        snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchRunPageSnapshot"
+    ResumeSnapshot:
+      type: object
+      required: [id, content]
+      properties:
+        id:
+          type: string
+        content:
+          type: object
+          additionalProperties: true
+    ResumeAnalysis:
+      type: object
+      required: [status, summary, evidenceSpans, riskFlags]
+      properties:
+        status:
+          type: string
+        summary:
+          type: string
+        evidenceSpans:
+          type: array
+          items:
+            type: string
+        riskFlags:
+          type: array
+          items:
+            type: string
+    VerdictRecord:
+      type: object
+      required: [verdict, reasons, actorId, createdAt]
+      properties:
+        verdict:
+          $ref: "#/components/schemas/Verdict"
+        reasons:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+        actorId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    CandidateDetailResponse:
+      type: object
+      required: [candidate, resumeSnapshot, aiAnalysis, verdictHistory]
+      properties:
+        candidate:
+          $ref: "#/components/schemas/CandidateCard"
+        resumeSnapshot:
+          $ref: "#/components/schemas/ResumeSnapshot"
+        aiAnalysis:
+          $ref: "#/components/schemas/ResumeAnalysis"
+        verdictHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerdictRecord"
+    Verdict:
+      type: string
+      enum: ["Match", "Maybe", "No"]
+    SaveVerdictRequest:
+      type: object
+      required: [verdict, reasons, actorId]
+      properties:
+        verdict:
+          $ref: "#/components/schemas/Verdict"
+        reasons:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+        actorId:
+          type: string
+        resumeSnapshotId:
+          type: string
+    SaveVerdictResponse:
+      type: object
+      required: [candidateId, latestVerdict, updatedAt]
+      properties:
+        candidateId:
+          type: string
+        latestVerdict:
+          $ref: "#/components/schemas/Verdict"
+        updatedAt:
+          type: string
+          format: date-time
+    CreateExportRequest:
+      type: object
+      required: [caseId, maskPolicy, reason, idempotencyKey]
+      properties:
+        caseId:
+          type: string
+        maskPolicy:
+          type: string
+          enum: [masked, sensitive]
+        reason:
+          type: string
+        idempotencyKey:
+          type: string
+    CreateExportResponse:
+      type: object
+      required: [exportJobId, status]
+      properties:
+        exportJobId:
+          type: string
+        status:
+          type: string
+        filePath:
+          type: string
+    MetricItem:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+    OpsSummaryResponse:
+      type: object
+      required: [queue, failures, latency, version, metrics]
+      properties:
+        queue:
+          type: object
+          additionalProperties: true
+        failures:
+          type: object
+          additionalProperties: true
+        latency:
+          type: object
+          additionalProperties: true
+        version:
+          type: object
+          additionalProperties: true
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricItem"
+    CreateEvalRunRequest:
+      type: object
+      required: [suiteId, datasetId, targetVersion]
+      properties:
+        suiteId:
+          type: string
+        datasetId:
+          type: string
+        targetVersion:
+          type: string
+    CreateEvalRunResponse:
+      type: object
+      required: [evalRunId, status]
+      properties:
+        evalRunId:
+          type: string
+        status:
+          type: string

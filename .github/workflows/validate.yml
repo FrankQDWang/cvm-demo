@@ -1,0 +1,31 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - name: Install Python dependencies
+        run: pip install uv
+      - name: Sync Python workspace
+        run: uv sync
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile=false
+      - name: Validate
+        run: make validate
+      - name: Test
+        run: make test

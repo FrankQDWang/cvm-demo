@@ -1,0 +1,7 @@
+@prefix cvm: <https://example.com/cvm#> .
+
+cvm:JDCase a cvm:Concept .
+cvm:ConditionPlan a cvm:Concept .
+cvm:SearchRun a cvm:Concept .
+cvm:PageSnapshot a cvm:Concept .
+cvm:CandidateVerdict a cvm:Concept .

@@ -1,0 +1,8 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix cvm: <https://example.com/cvm#> .
+
+cvm:SearchRunShape a sh:NodeShape ;
+  sh:targetClass cvm:SearchRun .
+
+cvm:ConditionPlanShape a sh:NodeShape ;
+  sh:targetClass cvm:ConditionPlan .

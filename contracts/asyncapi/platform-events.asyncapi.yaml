@@ -1,0 +1,109 @@
+asyncapi: 3.0.0
+info:
+  title: CVM Platform Events
+  version: "0.1.0"
+channels:
+  search-run.started.v1:
+    address: search-run.started.v1
+    messages:
+      SearchRunStarted:
+        $ref: "#/components/messages/SearchRunStarted"
+  search-page.persisted.v1:
+    address: search-page.persisted.v1
+    messages:
+      SearchPagePersisted:
+        $ref: "#/components/messages/SearchPagePersisted"
+  search-run.completed.v1:
+    address: search-run.completed.v1
+    messages:
+      SearchRunCompleted:
+        $ref: "#/components/messages/SearchRunCompleted"
+  candidate.verdicted.v1:
+    address: candidate.verdicted.v1
+    messages:
+      CandidateVerdicted:
+        $ref: "#/components/messages/CandidateVerdicted"
+  export.completed.v1:
+    address: export.completed.v1
+    messages:
+      ExportCompleted:
+        $ref: "#/components/messages/ExportCompleted"
+  eval-run.completed.v1:
+    address: eval-run.completed.v1
+    messages:
+      EvalRunCompleted:
+        $ref: "#/components/messages/EvalRunCompleted"
+components:
+  messages:
+    SearchRunStarted:
+      payload:
+        type: object
+        required: [runId, caseId, planId, pageBudget]
+        properties:
+          runId:
+            type: string
+          caseId:
+            type: string
+          planId:
+            type: string
+          pageBudget:
+            type: integer
+    SearchPagePersisted:
+      payload:
+        type: object
+        required: [runId, pageNo, cardCount, occurredAt]
+        properties:
+          runId:
+            type: string
+          pageNo:
+            type: integer
+          cardCount:
+            type: integer
+          occurredAt:
+            type: string
+    SearchRunCompleted:
+      payload:
+        type: object
+        required: [runId, status, occurredAt]
+        properties:
+          runId:
+            type: string
+          status:
+            type: string
+          occurredAt:
+            type: string
+    CandidateVerdicted:
+      payload:
+        type: object
+        required: [candidateId, caseId, verdict, actorId]
+        properties:
+          candidateId:
+            type: string
+          caseId:
+            type: string
+          verdict:
+            type: string
+          actorId:
+            type: string
+    ExportCompleted:
+      payload:
+        type: object
+        required: [exportJobId, caseId, status]
+        properties:
+          exportJobId:
+            type: string
+          caseId:
+            type: string
+          status:
+            type: string
+    EvalRunCompleted:
+      payload:
+        type: object
+        required: [evalRunId, suiteId, status]
+        properties:
+          evalRunId:
+            type: string
+          suiteId:
+            type: string
+          status:
+            type: string

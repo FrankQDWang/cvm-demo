@@ -1,0 +1,21 @@
+<div class="shell">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Local-First AI Native Harness</p>
+      <h1>CVM Demo Console</h1>
+      <p class="subtitle">
+        JD to candidate shortlist, with runs, snapshots, verdicts, masked export,
+        ops and eval hooks.
+      </p>
+    </div>
+    <nav class="nav">
+      <a *ngFor="let item of navItems" [routerLink]="item.path" routerLinkActive="active">
+        {{ item.label }}
+      </a>
+    </nav>
+  </header>
+
+  <main class="content">
+    <router-outlet />
+  </main>
+</div>
