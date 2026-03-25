@@ -2,18 +2,25 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
-
 from cvm_platform.application.dto import CandidateRecord
-from cvm_platform.infrastructure.db import Base
 from cvm_platform.infrastructure.models import CaseCandidateModel
 from cvm_platform.infrastructure.sqlalchemy_uow import _save_record
 
 
+class FakeSession:
+    def __init__(self) -> None:
+        self.new: list[object] = []
+        self._persisted: dict[tuple[type[object], object], object] = {}
+
+    def get(self, model_type: type[object], record_id: object) -> object | None:
+        return self._persisted.get((model_type, record_id))
+
+    def add(self, model: object) -> None:
+        self.new.append(model)
+
+
 def test_save_record_reuses_pending_candidate_model() -> None:
-    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
-    Base.metadata.create_all(engine)
+    session = FakeSession()
     timestamp = datetime.now(UTC)
     candidate = CandidateRecord(
         id="cand_test",
@@ -33,17 +40,13 @@ def test_save_record_reuses_pending_candidate_model() -> None:
         updated_at=timestamp,
     )
 
-    with Session(engine) as session:
-        _save_record(session, CaseCandidateModel, candidate)
-        candidate.latest_resume_snapshot_id = "snap_test"
-        candidate.updated_at = datetime.now(UTC)
-        _save_record(session, CaseCandidateModel, candidate)
-        session.commit()
+    _save_record(session, CaseCandidateModel, candidate)
+    candidate.latest_resume_snapshot_id = "snap_test"
+    candidate.updated_at = datetime.now(UTC)
+    _save_record(session, CaseCandidateModel, candidate)
 
-        rows = session.scalars(select(CaseCandidateModel)).all()
-
-    engine.dispose()
-
-    assert len(rows) == 1
-    assert rows[0].id == "cand_test"
-    assert rows[0].latest_resume_snapshot_id == "snap_test"
+    assert len(session.new) == 1
+    pending = session.new[0]
+    assert isinstance(pending, CaseCandidateModel)
+    assert pending.id == "cand_test"
+    assert pending.latest_resume_snapshot_id == "snap_test"
