@@ -2,7 +2,11 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { PlatformApiService } from '@cvm/platform-api-client';
+import {
+  type OpsSummaryResponse,
+  PlatformApiService,
+  type TemporalSearchRunDiagnosticResponse,
+} from '@cvm/platform-api-client';
 
 @Component({
   selector: 'app-ops-page',
@@ -56,43 +60,45 @@ import { PlatformApiService } from '@cvm/platform-api-client';
           </div>
         </label>
         <p class="error" *ngIf="diagnosticError">{{ diagnosticError }}</p>
-        <div class="summary-grid" *ngIf="diagnostic as item">
-          <article class="card">
-            <span>App Status</span>
-            <strong>{{ item.appStatus }}</strong>
-          </article>
-          <article class="card">
-            <span>Execution Found</span>
-            <strong>{{ item.temporalExecutionFound ? 'true' : 'false' }}</strong>
-          </article>
-          <article class="card">
-            <span>Execution Status</span>
-            <strong>{{ item.temporalExecutionStatus || '-' }}</strong>
-          </article>
-          <article class="card">
-            <span>Visibility Indexed</span>
-            <strong>{{ item.visibilityIndexed ? 'true' : 'false' }}</strong>
-          </article>
-          <article class="card">
-            <span>Workflow ID</span>
-            <strong>{{ item.workflowId }}</strong>
-          </article>
-          <article class="card">
-            <span>Task Queue</span>
-            <strong>{{ item.taskQueue }}</strong>
-          </article>
-        </div>
-        <p *ngIf="diagnostic?.error" class="error">{{ diagnostic?.error }}</p>
-        <a
-          *ngIf="diagnostic?.temporalUiUrl"
-          [href]="diagnostic.temporalUiUrl"
-          target="_blank"
-          rel="noreferrer"
-          class="link"
-        >
-          打开 Temporal UI
-        </a>
-        <pre *ngIf="diagnostic">{{ diagnostic | json }}</pre>
+        <ng-container *ngIf="diagnostic as item">
+          <div class="summary-grid">
+            <article class="card">
+              <span>App Status</span>
+              <strong>{{ item.appStatus }}</strong>
+            </article>
+            <article class="card">
+              <span>Execution Found</span>
+              <strong>{{ item.temporalExecutionFound ? 'true' : 'false' }}</strong>
+            </article>
+            <article class="card">
+              <span>Execution Status</span>
+              <strong>{{ item.temporalExecutionStatus || '-' }}</strong>
+            </article>
+            <article class="card">
+              <span>Visibility Indexed</span>
+              <strong>{{ item.visibilityIndexed ? 'true' : 'false' }}</strong>
+            </article>
+            <article class="card">
+              <span>Workflow ID</span>
+              <strong>{{ item.workflowId }}</strong>
+            </article>
+            <article class="card">
+              <span>Task Queue</span>
+              <strong>{{ item.taskQueue }}</strong>
+            </article>
+          </div>
+          <p *ngIf="item.error" class="error">{{ item.error }}</p>
+          <a
+            *ngIf="item.temporalUiUrl"
+            [href]="item.temporalUiUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="link"
+          >
+            打开 Temporal UI
+          </a>
+          <pre>{{ item | json }}</pre>
+        </ng-container>
       </section>
     </section>
   `,
@@ -116,9 +122,9 @@ import { PlatformApiService } from '@cvm/platform-api-client';
   `]
 })
 export class OpsPageComponent implements OnInit {
-  summary: any = {};
+  summary: OpsSummaryResponse | null = null;
   runId = '';
-  diagnostic: any = null;
+  diagnostic: TemporalSearchRunDiagnosticResponse | null = null;
   diagnosticError = '';
   loadingDiagnostic = false;
 

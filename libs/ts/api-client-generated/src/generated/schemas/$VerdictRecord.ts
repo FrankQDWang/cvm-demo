@@ -17,6 +17,7 @@ export const $VerdictRecord = {
         },
         notes: {
             type: 'string',
+            isNullable: true,
         },
         actorId: {
             type: 'string',

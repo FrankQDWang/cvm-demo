@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from typing import Any
 
 import httpx
@@ -53,13 +54,45 @@ def assert_cli_visibility(workflow_id: str, namespace: str) -> None:
 def assert_ui_visibility(workflow_id: str, namespace: str) -> None:
     endpoint = f"{temporal_ui_base_url()}/api/v1/namespaces/{namespace}/workflow-count"
     query = {"query": f"WorkflowId = '{workflow_id}'"}
-    with httpx.Client(timeout=10.0, trust_env=False) as client:
-        response = client.get(endpoint, params=query)
-        response.raise_for_status()
-        payload = response.json()
-    count = int(payload.get("count", 0))
-    if count < 1:
-        raise RuntimeError(f"Temporal UI 未索引 workflow: {workflow_id}. response={payload}")
+    deadline = time.monotonic() + 20.0
+    last_error: Exception | None = None
+    last_payload: dict[str, Any] | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            with httpx.Client(timeout=10.0, trust_env=False) as client:
+                response = client.get(endpoint, params=query)
+                response.raise_for_status()
+                payload = response.json()
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"Temporal UI 返回了非对象响应: {payload!r}")
+            last_payload = payload
+            count = int(payload.get("count", 0))
+            if count >= 1:
+                return
+            last_error = RuntimeError(f"Temporal UI 未索引 workflow: {workflow_id}. response={payload}")
+        except Exception as exc:  # pragma: no cover - retry orchestration only
+            last_error = exc
+        time.sleep(1.0)
+
+    if last_payload is not None:
+        raise RuntimeError(f"Temporal UI 未索引 workflow: {workflow_id}. response={last_payload}") from last_error
+    raise RuntimeError(f"Temporal UI 无法查询 workflow: {workflow_id}. endpoint={endpoint}") from last_error
+
+
+def assert_successful_run(run_id: str, run_status: dict[str, Any], diagnostic: dict[str, Any]) -> None:
+    status = str(run_status.get("status", "unknown"))
+    if status != "completed":
+        error_summary = run_status.get("errorSummary")
+        raise RuntimeError(
+            f"Search run {run_id} 未成功完成: status={status}, errorSummary={error_summary!r}"
+        )
+
+    app_status = str(diagnostic.get("appStatus", "unknown"))
+    if app_status != "completed":
+        raise RuntimeError(
+            f"Search run {run_id} 的 Temporal 诊断应用状态异常: appStatus={app_status}"
+        )
 
 
 def main() -> int:
@@ -97,9 +130,10 @@ def main() -> int:
             },
         ))
 
-        wait_for_search_run(client, str(run["runId"]))
+        run_status = wait_for_search_run(client, str(run["runId"]))
         diagnostic = wait_for_temporal_diagnostic(client, str(run["runId"]))
 
+    assert_successful_run(str(run["runId"]), run_status, diagnostic)
     assert_cli_visibility(str(diagnostic["workflowId"]), str(diagnostic["namespace"]))
     assert_ui_visibility(str(diagnostic["workflowId"]), str(diagnostic["namespace"]))
 

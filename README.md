@@ -11,9 +11,8 @@ make up
 ```
 
 - `Cases` 页现在按业务步骤拆成 `新建 JD Case -> 生成草案 -> 确认条件 -> Search Run -> 浏览候选 -> 简历辅助分析 -> verdict -> 导出`。
-- 默认搜索源是 `CTS`；复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY` 和 `CVM_CTS_TENANT_SECRET`。
-- `.env.example` 里已经补齐 `LLM` 配置位：`CVM_LLM_MODE`、`CVM_LLM_PROVIDER`、`CVM_LLM_MODEL`、`OPENAI_API_KEY` 等。
-- 默认仍是 `stub`；切到 `CVM_LLM_MODE=live` 并填写 `OPENAI_API_KEY` 后，API 和 worker 会调用 OpenAI `Responses API`。
+- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET` 和 `OPENAI_API_KEY`。
+- `API` 和 `worker` 在本地运行时默认按 `CVM_LLM_MODE=live` 调用 OpenAI `Responses API`；自动化测试与 CI 不读取这些 mode 作为判定依据，而是显式切到 deterministic `mock + stub`。
 - `Search Run` 现在默认且唯一通过 `Temporal` 执行，不再支持同步 fallback。
 - `Temporal` 可见性现在默认走 `OpenSearch-backed advanced visibility`；判断 `Temporal UI` 前，先执行显式重建命令。
 
@@ -39,7 +38,14 @@ make up
 - User web lives in `apps/web-user`, monitoring web in `apps/web-ops`, and evaluation web in `apps/web-evals`.
 - `docker compose` now starts the full local stack: `postgres`, `opensearch`, `temporal`, `temporal-ui`, `temporal-admin-tools`, `api`, `worker`, `web-user`, `web-ops`, and `web-evals`.
 - Manual host-mode development is available with `make dev-api`, `make dev-worker`, `make dev-web-user`, `make dev-web-ops`, and `make dev-web-evals`.
-- Configuration is loaded from `.env`; start from `.env.example`.
+- 真实运行时配置从 `.env` 读取；自动化 stack tests 和 CI 会显式覆盖为 deterministic `mock + stub`，不依赖 `.env` 中的 mode 配置。
+
+## CI
+
+- `validate` is the only PR-blocking workflow; the intended required checks remain `validate-static`, `validate-contracts`, `test`, and `test-stack`.
+- `test-stack` and `nightly-regression` pin stack-backed jobs to `CVM_RESUME_SOURCE_MODE=mock` and `CVM_LLM_MODE=stub`, so CI does not depend on live CTS or OpenAI behavior.
+- `nightly-regression` runs the stack-backed `make eval-critical` gate and `make temporal-visibility-smoke`.
+- `build-verify` runs `make verify-images` to prove the runtime Docker images still build from the checked-in lockfiles and Dockerfiles.
 
 ## One-Click Local Run
 
@@ -59,7 +65,10 @@ make down
 - `make rebuild-backend` only rebuilds `api + worker`; use it after changing Python code or dependencies.
 - `make rebuild-temporal-stack` force-recreates `opensearch + temporal + temporal-ui + temporal-admin-tools`; use it after changing Temporal/OpenSearch config.
 - `make temporal-visibility-smoke` creates a smoke `SearchRun` and checks DB state, Temporal execution, visibility index, and UI count together.
-- `make test` 和 `make eval-critical` 依赖已启动的本地 `postgres + temporal + api + worker`。
+- `make test` is deterministic and does not require a pre-started local stack.
+- `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke` now self-manage an isolated deterministic compose stack with `mock + stub`; they do not consume `.env` 中的 LLM / CTS mode.
+- If you intentionally want to point these commands at an already running stack, set `CVM_EXTERNAL_STACK=1`.
+- `make verify-images` validates that `api`, `worker`, `web-user`, `web-ops`, and `web-evals` Docker images still build from the current worktree.
 - `make up` and `make status` both print copyable local URLs after execution.
 - User Web: `http://127.0.0.1:4200`
 - Ops Web: `http://127.0.0.1:4201`

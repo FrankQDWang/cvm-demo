@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
 
-import { PlatformApiService } from '@cvm/platform-api-client';
+import { type CreateEvalRunResponse, PlatformApiService } from '@cvm/platform-api-client';
 
 @Component({
   selector: 'app-evals-page',
@@ -22,7 +22,7 @@ import { PlatformApiService } from '@cvm/platform-api-client';
   `]
 })
 export class EvalsPageComponent {
-  result: any = null;
+  result: CreateEvalRunResponse | null = null;
 
   constructor(private readonly api: PlatformApiService) {}
 

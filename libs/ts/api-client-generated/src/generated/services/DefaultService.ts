@@ -42,6 +42,9 @@ export class DefaultService {
             url: '/api/v1/cases',
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+            },
         });
     }
     /**
@@ -64,6 +67,10 @@ export class DefaultService {
             },
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+            },
         });
     }
     /**
@@ -86,6 +93,12 @@ export class DefaultService {
             },
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+                502: `A required upstream dependency returned a non-retryable failure.`,
+                503: `A required upstream dependency is temporarily unavailable or retryable.`,
+            },
         });
     }
     /**
@@ -108,6 +121,10 @@ export class DefaultService {
             },
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+            },
         });
     }
     /**
@@ -125,6 +142,12 @@ export class DefaultService {
             url: '/api/v1/search-runs',
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+                409: `The current resource state does not allow this operation.`,
+                503: `A required upstream dependency is temporarily unavailable or retryable.`,
+            },
         });
     }
     /**
@@ -142,6 +165,9 @@ export class DefaultService {
             url: '/api/v1/search-runs/{runId}',
             path: {
                 'runId': runId,
+            },
+            errors: {
+                404: `Requested resource was not found.`,
             },
         });
     }
@@ -166,6 +192,10 @@ export class DefaultService {
             query: {
                 'pageNo': pageNo,
             },
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+            },
         });
     }
     /**
@@ -183,6 +213,9 @@ export class DefaultService {
             url: '/api/v1/case-candidates/{candidateId}',
             path: {
                 'candidateId': candidateId,
+            },
+            errors: {
+                404: `Requested resource was not found.`,
             },
         });
     }
@@ -206,6 +239,10 @@ export class DefaultService {
             },
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                404: `Requested resource was not found.`,
+            },
         });
     }
     /**
@@ -223,6 +260,12 @@ export class DefaultService {
             url: '/api/v1/exports',
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+                403: `The caller is not allowed to perform this operation.`,
+                404: `Requested resource was not found.`,
+                502: `A required upstream dependency returned a non-retryable failure.`,
+            },
         });
     }
     /**
@@ -252,6 +295,10 @@ export class DefaultService {
             path: {
                 'runId': runId,
             },
+            errors: {
+                404: `Requested resource was not found.`,
+                503: `A required upstream dependency is temporarily unavailable or retryable.`,
+            },
         });
     }
     /**
@@ -269,6 +316,9 @@ export class DefaultService {
             url: '/api/v1/evals/runs',
             body: requestBody,
             mediaType: 'application/json',
+            errors: {
+                400: `Invalid input or contract validation failure.`,
+            },
         });
     }
 }

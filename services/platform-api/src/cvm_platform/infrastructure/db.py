@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
@@ -27,7 +29,7 @@ def initialize_database() -> None:
             connection.execute(text("SELECT pg_advisory_unlock(871245019533682001)"))
 
 
-def get_session() -> Session:
+def get_session() -> Iterator[Session]:
     session = SessionLocal()
     try:
         yield session

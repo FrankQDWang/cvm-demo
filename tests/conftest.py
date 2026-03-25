@@ -4,6 +4,16 @@ import httpx
 import pytest
 
 from cvm_testkit import build_client, require_local_stack
+from tests.support.api_harness import build_test_client, close_test_client
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch) -> httpx.Client:
+    test_client = build_test_client(tmp_path, monkeypatch)
+    try:
+        yield test_client
+    finally:
+        close_test_client(test_client)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -11,7 +21,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 @pytest.fixture(scope="session")
-def client() -> httpx.Client:
+def stack_client() -> httpx.Client:
     require_local_stack()
     with build_client() as api_client:
         yield api_client

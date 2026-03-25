@@ -2,7 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Literal
+
+from cvm_platform.domain.types import (
+    CandidateCardPayload,
+    ConditionPlanDraftPayload,
+    EvalSummaryMetricsPayload,
+    EvidenceRefPayload,
+    FailureSummaryPayload,
+    JsonObject,
+    LatencySummaryPayload,
+    NormalizedQueryPayload,
+    QueueSummaryPayload,
+    ResumeProjectionPayload,
+    SearchRunStatus,
+    StructuredFiltersPayload,
+)
 
 
 @dataclass(slots=True)
@@ -34,7 +49,7 @@ class KeywordDraftJobRecord:
     status: str
     model_version: str
     prompt_version: str
-    draft_payload: dict[str, Any]
+    draft_payload: ConditionPlanDraftPayload
     created_at: datetime
     completed_at: datetime
 
@@ -44,13 +59,13 @@ class ConditionPlanRecord:
     id: str
     case_id: str
     jd_version_id: str
-    status: str
+    status: Literal["draft", "confirmed"]
     must_terms: list[str]
     should_terms: list[str]
     exclude_terms: list[str]
-    structured_filters: dict[str, Any]
-    evidence_refs: list[dict[str, str]]
-    normalized_query: dict[str, Any]
+    structured_filters: StructuredFiltersPayload
+    evidence_refs: list[EvidenceRefPayload]
+    normalized_query: NormalizedQueryPayload
     confirmed_by: str | None
     confirmed_at: datetime | None
     created_at: datetime
@@ -61,7 +76,7 @@ class SearchRunRecord:
     id: str
     case_id: str
     plan_id: str
-    status: str
+    status: SearchRunStatus
     page_budget: int
     pages_completed: int
     idempotency_key: str
@@ -79,10 +94,10 @@ class SearchRunPageRecord:
     id: str
     run_id: str
     page_no: int
-    status: str
-    upstream_request: dict[str, Any]
-    upstream_response: dict[str, Any]
-    normalized_cards: list[dict[str, Any]]
+    status: SearchRunStatus
+    upstream_request: JsonObject
+    upstream_response: JsonObject
+    normalized_cards: list[CandidateCardPayload]
     total: int
     fetched_at: datetime
     error_code: str | None
@@ -113,7 +128,7 @@ class ResumeSnapshotRecord:
     id: str
     case_candidate_id: str
     source_hash: str
-    payload: dict[str, Any]
+    payload: ResumeProjectionPayload
     created_at: datetime
 
 
@@ -163,7 +178,7 @@ class AuditLogRecord:
     target_id: str
     action: str
     result: str
-    metadata_json: dict[str, Any]
+    metadata_json: JsonObject
     occurred_at: datetime
 
 
@@ -175,7 +190,7 @@ class EvalRunRecord:
     target_version: str
     baseline_version: str | None
     status: str
-    summary_metrics: dict[str, Any]
+    summary_metrics: EvalSummaryMetricsPayload
     blocking_result: bool
     created_at: datetime
 
@@ -199,9 +214,9 @@ class OpsVersionRecord:
 
 @dataclass(slots=True)
 class OpsSummaryRecord:
-    queue: dict[str, Any]
-    failures: dict[str, Any]
-    latency: dict[str, Any]
+    queue: QueueSummaryPayload
+    failures: FailureSummaryPayload
+    latency: LatencySummaryPayload
     version: OpsVersionRecord
     metrics: list[MetricRecord] = field(default_factory=list)
 

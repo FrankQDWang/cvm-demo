@@ -13,11 +13,7 @@ export const $ConfirmConditionPlanResponse = {
             isRequired: true,
         },
         normalizedQuery: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+            type: 'NormalizedQuery',
             isRequired: true,
         },
     },

@@ -7,18 +7,22 @@ export const $CreateSearchRunRequest = {
         caseId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         planId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         pageBudget: {
             type: 'number',
             isRequired: true,
+            minimum: 1,
         },
         idempotencyKey: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

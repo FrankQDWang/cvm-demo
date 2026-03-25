@@ -8,8 +8,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  validate-static:
+    timeout-minutes: 30
     runs-on:
       - self-hosted
       - Linux
@@ -18,55 +23,85 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
         with:
           python-version: "3.12"
-      - name: Install Python runtime
-        run: uv python install "${UV_PYTHON}"
-      - name: Install mise
-        run: |
-          curl -fsSL https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-      - name: Provision Node and pnpm
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          mise trust --yes
-          mise install
-          mise exec -- node --version
-          mise exec -- corepack enable
-          mise exec -- corepack install
-          mise exec -- pnpm --version
-      - name: Sync Python workspace
-        run: uv sync --locked
-      - name: Install Node dependencies
-        run: mise exec -- pnpm install --frozen-lockfile
-      - name: Validate
-        run: make validate
+          install-node: "true"
+          install-node-dependencies: "true"
+      - name: Validate Static
+        run: make validate-static
+
+  validate-contracts:
+    timeout-minutes: 30
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - docker-cvm-demo
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
+        with:
+          python-version: "3.12"
+          install-node: "true"
+          install-node-dependencies: "true"
+      - name: Validate Contracts
+        run: make validate-contracts
+
+  test:
+    timeout-minutes: 20
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - docker-cvm-demo
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
+        with:
+          python-version: "3.12"
       - name: Test
         run: make test
+
+  test-stack:
+    timeout-minutes: 40
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - docker-cvm-demo
+    env:
+      UV_PYTHON: "3.12"
+      CVM_TEST_API_BASE_URL: "http://127.0.0.1:8010"
+      CVM_TEMPORAL_HOST: "127.0.0.1:7233"
+      CVM_OPENSEARCH_BASE_URL: "http://127.0.0.1:9200"
+      CVM_TEMPORAL_UI_BASE_URL: "http://127.0.0.1:8080"
+      CVM_RESUME_SOURCE_MODE: "mock"
+      CVM_LLM_MODE: "stub"
+      CVM_EXTERNAL_STACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
+        with:
+          python-version: "3.12"
       - name: Bring up stack
-        env:
-          CVM_POSTGRES_PORT: "55432"
-          CVM_API_PORT: "18010"
-          CVM_TEMPORAL_PORT: "17233"
-          CVM_TEMPORAL_UI_PORT: "18080"
-          CVM_OPENSEARCH_PORT: "19200"
-        run: docker compose up -d --build --wait --wait-timeout 240 --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
+        run: docker compose up -d --build --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
       - name: Test Stack
-        env:
-          CVM_POSTGRES_PORT: "55432"
-          CVM_API_PORT: "18010"
-          CVM_TEMPORAL_PORT: "17233"
-          CVM_TEMPORAL_UI_PORT: "18080"
-          CVM_OPENSEARCH_PORT: "19200"
-          CVM_TEST_API_BASE_URL: "http://host.docker.internal:18010"
-          CVM_TEMPORAL_HOST: "host.docker.internal:17233"
-          CVM_OPENSEARCH_BASE_URL: "http://host.docker.internal:19200"
         run: make test-stack
+      - name: Collect stack diagnostics
+        if: failure()
+        run: ./tools/ci/collect_compose_diagnostics.sh .artifacts/test-stack
+      - name: Upload stack diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-stack-diagnostics-${{ github.run_id }}
+          path: .artifacts/test-stack
       - name: Tear down stack
         if: always()
         run: docker compose down --remove-orphans

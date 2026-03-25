@@ -7,14 +7,17 @@ export const $CreateKeywordDraftJobRequest = {
         jdVersionId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         modelVersion: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         promptVersion: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

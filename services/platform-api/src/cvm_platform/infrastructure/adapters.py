@@ -3,15 +3,41 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from typing import Any
+from json import JSONDecodeError
+from typing import cast
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from cvm_platform.application.policies import resume_hash
-from cvm_platform.domain.types import CandidateData, ConditionPlanDraftData, EvidenceRef, SearchPageData
+from cvm_platform.domain.errors import (
+    ExternalDependencyError,
+    TransientDependencyError,
+    ValidationError,
+)
+from cvm_platform.domain.types import (
+    CandidateData,
+    ConditionPlanDraftData,
+    EvidenceRef,
+    JsonObject,
+    NormalizedQueryPayload,
+    ResumeEducationItemPayload,
+    ResumeProjectionPayload,
+    ResumeWorkExperienceItemPayload,
+    SearchPageData,
+    StructuredFiltersPayload,
+    to_json_object,
+)
 from cvm_platform.settings.config import Settings
 
-from .mock_catalog import MOCK_CANDIDATES
+from .boundary_models import (
+    CtsCandidateModel,
+    CtsRequestModel,
+    CtsSearchResponseModel,
+    OpenAIKeywordDraftModel,
+    OpenAIResponsesEnvelopeModel,
+    StructuredFiltersBoundaryModel,
+)
+from .mock_catalog import MOCK_CANDIDATES, MockCandidatePayload
 
 
 HIGH_SIGNAL_TERMS = [
@@ -47,6 +73,10 @@ ALLOWED_STRUCTURED_FILTER_KEYS = {
 PLACEHOLDER_MODEL_VERSIONS = {"", "default", "stub", "stub-1"}
 
 
+def _dump_structured_filters(model: StructuredFiltersBoundaryModel) -> StructuredFiltersPayload:
+    return cast(StructuredFiltersPayload, cast(object, model.model_dump(exclude_none=True)))
+
+
 class StubLLMAdapter:
     def draft_keywords(
         self,
@@ -75,7 +105,7 @@ class StubLLMAdapter:
         must_terms = must_terms[:4] or ["JD", "MVP"]
         should_terms = [term for term in should_terms if term not in must_terms][:6]
 
-        structured_filters: dict[str, Any] = {"page": 1, "pageSize": 10}
+        structured_filters: StructuredFiltersPayload = {"page": 1, "pageSize": 10}
 
         city = next((term for term in CITY_TERMS if term in jd_text), None)
         if city:
@@ -115,7 +145,10 @@ class StubLLMAdapter:
             structured_filters["workContent"] = " ".join(work_content_terms)
 
         evidence_terms = must_terms[:2] or should_terms[:2]
-        evidence_refs = [EvidenceRef(label=f"JD line {index + 1}", excerpt=term) for index, term in enumerate(evidence_terms)]
+        evidence_refs = [
+            EvidenceRef(label=f"JD line {index + 1}", excerpt=term)
+            for index, term in enumerate(evidence_terms)
+        ]
         return ConditionPlanDraftData(
             must_terms=must_terms,
             should_terms=should_terms,
@@ -123,6 +156,19 @@ class StubLLMAdapter:
             structured_filters=structured_filters,
             evidence_refs=evidence_refs,
         )
+
+
+class MisconfiguredLLMAdapter:
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def draft_keywords(
+        self,
+        jd_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> ConditionPlanDraftData:
+        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
 
 
 class OpenAILLMAdapter:
@@ -194,7 +240,7 @@ JD:
 {jd_text}
 """.strip()
 
-    def _responses_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _responses_request(self, payload: JsonObject) -> OpenAIResponsesEnvelopeModel:
         req = urllib_request.Request(
             f"{self.base_url}/responses",
             data=json.dumps(payload).encode("utf-8"),
@@ -206,26 +252,45 @@ JD:
         )
         try:
             with urllib_request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                body = resp.read().decode("utf-8")
         except urllib_error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenAI request failed with HTTP {exc.code}: {body[:500]}") from exc
+            if 500 <= exc.code < 600:
+                raise TransientDependencyError(
+                    "OPENAI_HTTP_ERROR",
+                    f"OpenAI request failed with HTTP {exc.code}.",
+                ) from exc
+            raise ExternalDependencyError(
+                "OPENAI_HTTP_ERROR",
+                f"OpenAI request failed with HTTP {exc.code}: {body[:500]}",
+            ) from exc
         except urllib_error.URLError as exc:
-            raise RuntimeError(f"OpenAI network error: {exc.reason}") from exc
+            raise TransientDependencyError(
+                "OPENAI_NETWORK_ERROR",
+                f"OpenAI network error: {exc.reason}",
+            ) from exc
+
+        try:
+            payload_json = json.loads(body)
+            return OpenAIResponsesEnvelopeModel.model_validate(payload_json)
+        except (JSONDecodeError, ValueError) as exc:
+            raise ExternalDependencyError(
+                "OPENAI_RESPONSE_INVALID",
+                "OpenAI response was not valid JSON.",
+            ) from exc
 
     @staticmethod
-    def _extract_output_text(response_body: dict[str, Any]) -> str:
+    def _extract_output_text(response_body: OpenAIResponsesEnvelopeModel) -> str:
         text_parts: list[str] = []
-        for item in response_body.get("output", []):
-            if not isinstance(item, dict):
-                continue
-            for content in item.get("content", []):
-                if isinstance(content, dict) and content.get("type") == "output_text":
-                    text = str(content.get("text") or "").strip()
-                    if text:
-                        text_parts.append(text)
+        for item in response_body.output:
+            for content in item.content:
+                if content.type == "output_text" and content.text:
+                    text_parts.append(content.text.strip())
         if not text_parts:
-            raise RuntimeError("OpenAI response did not contain output_text.")
+            raise ExternalDependencyError(
+                "OPENAI_RESPONSE_EMPTY",
+                "OpenAI response did not contain output_text.",
+            )
         return "\n".join(text_parts)
 
     def _parse_draft(self, raw_text: str) -> ConditionPlanDraftData:
@@ -235,89 +300,42 @@ JD:
         start = cleaned.find("{")
         end = cleaned.rfind("}")
         if start == -1 or end == -1 or start >= end:
-            raise RuntimeError(f"OpenAI response did not contain a JSON object: {raw_text[:300]}")
+            raise ExternalDependencyError(
+                "OPENAI_RESPONSE_INVALID",
+                f"OpenAI response did not contain a JSON object: {raw_text[:300]}",
+            )
 
-        payload = json.loads(cleaned[start : end + 1])
-        must_terms = self._normalize_terms(payload.get("must_terms"), limit=4)
-        should_terms = [term for term in self._normalize_terms(payload.get("should_terms"), limit=6) if term not in must_terms]
-        exclude_terms = self._normalize_terms(payload.get("exclude_terms"), limit=4)
-        structured_filters = self._normalize_structured_filters(payload.get("structured_filters"))
-        evidence_refs = self._normalize_evidence_refs(payload.get("evidence_refs"), must_terms, should_terms)
-        return ConditionPlanDraftData(
-            must_terms=must_terms or ["JD", "MVP"],
-            should_terms=should_terms,
-            exclude_terms=exclude_terms,
-            structured_filters=structured_filters,
-            evidence_refs=evidence_refs,
+        try:
+            payload_json = json.loads(cleaned[start : end + 1])
+            draft = OpenAIKeywordDraftModel.model_validate(payload_json)
+        except (JSONDecodeError, ValueError) as exc:
+            raise ExternalDependencyError(
+                "OPENAI_RESPONSE_INVALID",
+                "OpenAI keyword draft did not match the required schema.",
+            ) from exc
+
+        filters = StructuredFiltersBoundaryModel.model_validate(
+            draft.structured_filters.model_dump(exclude_none=True)
         )
-
-    @staticmethod
-    def _normalize_terms(value: Any, limit: int) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        terms: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            term = str(item or "").strip()
-            lowered = term.lower()
-            if not term or lowered in seen:
-                continue
-            seen.add(lowered)
-            terms.append(term)
-            if len(terms) >= limit:
-                break
-        return terms
-
-    @staticmethod
-    def _normalize_structured_filters(value: Any) -> dict[str, Any]:
-        raw_filters = value if isinstance(value, dict) else {}
-        normalized: dict[str, Any] = {"page": 1, "pageSize": 10}
-        for key, item in raw_filters.items():
-            if key not in ALLOWED_STRUCTURED_FILTER_KEYS:
-                continue
-            if key in {"page", "pageSize", "degree", "schoolType", "workExperienceRange"}:
-                try:
-                    normalized[key] = int(item)
-                except (TypeError, ValueError):
-                    continue
-            elif key == "location":
-                if isinstance(item, list):
-                    locations = [str(location).strip() for location in item if str(location).strip()]
-                    if locations:
-                        normalized[key] = locations[:3]
-                else:
-                    location = str(item or "").strip()
-                    if location:
-                        normalized[key] = [location]
-            else:
-                text = str(item or "").strip()
-                if text:
-                    normalized[key] = text
-        normalized["page"] = max(1, int(normalized.get("page", 1)))
-        normalized["pageSize"] = max(1, int(normalized.get("pageSize", 10)))
-        return normalized
-
-    @staticmethod
-    def _normalize_evidence_refs(value: Any, must_terms: list[str], should_terms: list[str]) -> list[EvidenceRef]:
-        refs: list[EvidenceRef] = []
-        if isinstance(value, list):
-            for item in value:
-                if not isinstance(item, dict):
-                    continue
-                label = str(item.get("label") or "").strip()
-                excerpt = str(item.get("excerpt") or "").strip()
-                if label and excerpt:
-                    refs.append(EvidenceRef(label=label, excerpt=excerpt))
-                if len(refs) >= 4:
-                    break
-        if refs:
-            return refs
-        fallback_terms = (must_terms[:2] or should_terms[:2])[:2]
-        return [EvidenceRef(label=f"JD evidence {index + 1}", excerpt=term) for index, term in enumerate(fallback_terms)]
+        return ConditionPlanDraftData(
+            must_terms=draft.must_terms[:4] or ["JD", "MVP"],
+            should_terms=[term for term in draft.should_terms[:6] if term not in draft.must_terms[:4]],
+            exclude_terms=draft.exclude_terms[:4],
+            structured_filters=_dump_structured_filters(filters),
+            evidence_refs=[
+                EvidenceRef(label=ref.label, excerpt=ref.excerpt)
+                for ref in draft.evidence_refs[:4]
+            ],
+        )
 
 
 class MockResumeSourceAdapter:
-    def search_candidates(self, normalized_query: dict, page_no: int, page_size: int) -> SearchPageData:
+    def search_candidates(
+        self,
+        normalized_query: NormalizedQueryPayload,
+        page_no: int,
+        page_size: int,
+    ) -> SearchPageData:
         if page_no <= 0 or page_size <= 0:
             return SearchPageData(
                 status="failed",
@@ -325,15 +343,19 @@ class MockResumeSourceAdapter:
                 page_no=page_no,
                 page_size=page_size,
                 candidates=[],
-                upstream_request={"page": page_no, "pageSize": page_size},
-                upstream_response={"code": 200, "status": "ok", "message": "parameter anomaly", "data": None},
+                upstream_request=to_json_object({"page": page_no, "pageSize": page_size}),
+                upstream_response=to_json_object({"code": 200, "status": "ok", "message": "parameter anomaly", "data": None}),
                 error_code="CTS_PARAM_ANOMALY",
                 error_message="Invalid page or pageSize produced data:null in upstream contract.",
             )
 
-        terms = [term.lower() for term in normalized_query.get("mustTerms", []) + normalized_query.get("shouldTerms", [])]
+        terms = [
+            term.lower()
+            for term in normalized_query["mustTerms"] + normalized_query["shouldTerms"]
+        ]
+        filtered: list[MockCandidatePayload]
         if not terms:
-            filtered = MOCK_CANDIDATES
+            filtered = list(MOCK_CANDIDATES)
         else:
             filtered = []
             for candidate in MOCK_CANDIDATES:
@@ -343,7 +365,8 @@ class MockResumeSourceAdapter:
                         candidate["company"],
                         candidate["location"],
                         candidate["summary"],
-                        " ".join(candidate["resume"]["skills"]),
+                        " ".join(candidate["resumeProjection"]["workSummaries"]),
+                        " ".join(candidate["resumeProjection"]["projectNames"]),
                     ]
                 ).lower()
                 if any(term in haystack for term in terms):
@@ -353,26 +376,26 @@ class MockResumeSourceAdapter:
         page_items = filtered[start : start + page_size]
         candidates = [
             CandidateData(
-                external_identity_id=item["external_identity_id"],
-                name=item["name"],
-                title=item["title"],
-                company=item["company"],
-                location=item["location"],
-                summary=item["summary"],
-                email=item["email"],
-                phone=item["phone"],
-                resume=item["resume"],
+                external_identity_id=str(item["external_identity_id"]),
+                name=str(item["name"]),
+                title=str(item["title"]),
+                company=str(item["company"]),
+                location=str(item["location"]),
+                summary=str(item["summary"]),
+                email=str(item["email"]),
+                phone=str(item["phone"]),
+                resume_projection=item["resumeProjection"],
             )
             for item in page_items
         ]
-        upstream_data = {
+        upstream_data: JsonObject = {
             "candidates": [
                 {
-                    "id": item["external_identity_id"],
-                    "name": item["name"],
-                    "title": item["title"],
-                    "company": item["company"],
-                    "location": item["location"],
+                    "id": str(item["external_identity_id"]),
+                    "name": str(item["name"]),
+                    "title": str(item["title"]),
+                    "company": str(item["company"]),
+                    "location": str(item["location"]),
                 }
                 for item in page_items
             ],
@@ -386,21 +409,26 @@ class MockResumeSourceAdapter:
             page_no=page_no,
             page_size=page_size,
             candidates=candidates,
-            upstream_request={"page": page_no, "pageSize": page_size, **normalized_query},
-            upstream_response={"code": 200, "status": "ok", "message": "success", "data": upstream_data},
+            upstream_request=to_json_object({"page": page_no, "pageSize": page_size, **normalized_query}),
+            upstream_response=to_json_object({"code": 200, "status": "ok", "message": "success", "data": upstream_data}),
         )
 
 
 class MissingCtsCredentialsAdapter:
-    def search_candidates(self, normalized_query: dict, page_no: int, page_size: int) -> SearchPageData:
+    def search_candidates(
+        self,
+        normalized_query: NormalizedQueryPayload,
+        page_no: int,
+        page_size: int,
+    ) -> SearchPageData:
         return SearchPageData(
             status="failed",
             total=0,
             page_no=page_no,
             page_size=page_size,
             candidates=[],
-            upstream_request={"page": page_no, "pageSize": page_size, **normalized_query},
-            upstream_response={"code": 40001, "status": "fail", "message": "CTS credentials not configured", "data": None},
+            upstream_request=to_json_object({"page": page_no, "pageSize": page_size, **normalized_query}),
+            upstream_response=to_json_object({"code": 40001, "status": "fail", "message": "CTS credentials not configured", "data": None}),
             error_code="CTS_NOT_CONFIGURED",
             error_message="CTS tenant credentials are not configured.",
         )
@@ -413,9 +441,15 @@ class CtsResumeSourceAdapter:
         self.tenant_secret = tenant_secret
         self.timeout_seconds = timeout_seconds
 
-    def search_candidates(self, normalized_query: dict, page_no: int, page_size: int) -> SearchPageData:
-        payload = self._build_payload(normalized_query, page_no, page_size)
-        response_body: dict[str, Any] = {}
+    def search_candidates(
+        self,
+        normalized_query: NormalizedQueryPayload,
+        page_no: int,
+        page_size: int,
+    ) -> SearchPageData:
+        request_model = self._build_payload(normalized_query, page_no, page_size)
+        payload = to_json_object(request_model.model_dump(exclude_none=True))
+        response_body: JsonObject = {}
         try:
             req = urllib_request.Request(
                 f"{self.base_url}/thirdCooperate/search/candidate/cts",
@@ -429,7 +463,9 @@ class CtsResumeSourceAdapter:
                 method="POST",
             )
             with urllib_request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                response_body = json.loads(resp.read().decode("utf-8"))
+                raw_response: object = json.loads(resp.read().decode("utf-8"))
+                response_model = CtsSearchResponseModel.model_validate(raw_response)
+                response_body = to_json_object(response_model.model_dump(mode="json"))
         except urllib_error.HTTPError as exc:
             response_body = self._read_error_response(exc)
             return SearchPageData(
@@ -439,7 +475,7 @@ class CtsResumeSourceAdapter:
                 page_size=page_size,
                 candidates=[],
                 upstream_request=payload,
-                upstream_response=response_body or {"status": "fail", "message": str(exc)},
+                upstream_response=response_body or to_json_object({"status": "fail", "message": f"HTTP {exc.code}"}),
                 error_code="CTS_HTTP_ERROR",
                 error_message=f"CTS HTTP error {exc.code}.",
             )
@@ -451,12 +487,26 @@ class CtsResumeSourceAdapter:
                 page_size=page_size,
                 candidates=[],
                 upstream_request=payload,
-                upstream_response={"status": "fail", "message": str(exc.reason)},
+                upstream_response=to_json_object({"status": "fail", "message": str(exc.reason)}),
                 error_code="CTS_NETWORK_ERROR",
                 error_message=f"CTS network error: {exc.reason}.",
             )
+        except (JSONDecodeError, ValueError) as exc:
+            return SearchPageData(
+                status="failed",
+                total=0,
+                page_no=page_no,
+                page_size=page_size,
+                candidates=[],
+                upstream_request=payload,
+                upstream_response=response_body,
+                error_code="CTS_RESPONSE_INVALID",
+                error_message=f"CTS response did not match the validated schema: {exc}.",
+            )
 
-        if response_body.get("code") == 20001:
+        code_value = response_body.get("code", 0)
+        code = int(code_value) if isinstance(code_value, int | str) else 0
+        if code == 20001:
             return SearchPageData(
                 status="failed",
                 total=0,
@@ -466,7 +516,7 @@ class CtsResumeSourceAdapter:
                 upstream_request=payload,
                 upstream_response=response_body,
                 error_code="CTS_AUTH_FAILED",
-                error_message=response_body.get("message") or "CTS authentication failed.",
+                error_message=str(response_body.get("message") or "CTS authentication failed."),
             )
 
         data = response_body.get("data")
@@ -483,65 +533,92 @@ class CtsResumeSourceAdapter:
                 error_message="CTS returned data:null. Check page and pageSize or loosen conditions.",
             )
 
-        candidates_raw = data.get("candidates") or []
-        candidates = [self._map_candidate(item) for item in candidates_raw]
+        response_model = CtsSearchResponseModel.model_validate(response_body)
+        if response_model.data is None:
+            return SearchPageData(
+                status="failed",
+                total=0,
+                page_no=page_no,
+                page_size=page_size,
+                candidates=[],
+                upstream_request=payload,
+                upstream_response=response_body,
+                error_code="CTS_PARAM_ANOMALY",
+                error_message="CTS returned data:null. Check page and pageSize or loosen conditions.",
+            )
+        candidates = [self._map_candidate(item) for item in response_model.data.candidates]
         return SearchPageData(
             status="completed",
-            total=int(data.get("total") or 0),
-            page_no=int(data.get("page") or page_no),
-            page_size=int(data.get("pageSize") or page_size),
+            total=response_model.data.total,
+            page_no=int(response_model.data.page),
+            page_size=int(response_model.data.pageSize),
             candidates=candidates,
             upstream_request=payload,
-            upstream_response=response_body,
+            upstream_response=to_json_object(response_model.model_dump(mode="json")),
         )
 
-    def _build_payload(self, normalized_query: dict, page_no: int, page_size: int) -> dict[str, Any]:
-        filters = dict(normalized_query.get("structuredFilters") or {})
-        keyword = normalized_query.get("keyword") or " ".join(normalized_query.get("mustTerms", []) + normalized_query.get("shouldTerms", []))
-        payload = {
-            "jd": normalized_query.get("jd"),
-            "keyword": keyword or None,
-            "school": filters.get("school"),
-            "company": filters.get("company"),
-            "position": filters.get("position"),
-            "workContent": filters.get("workContent"),
-            "location": filters.get("location"),
-            "degree": filters.get("degree"),
-            "schoolType": filters.get("schoolType"),
-            "workExperienceRange": filters.get("workExperienceRange"),
-            "page": page_no,
-            "pageSize": page_size,
-        }
-        return {key: value for key, value in payload.items() if value not in (None, "", [])}
+    def _build_payload(
+        self,
+        normalized_query: NormalizedQueryPayload,
+        page_no: int,
+        page_size: int,
+    ) -> CtsRequestModel:
+        filters = normalized_query["structuredFilters"]
+        keyword = normalized_query["keyword"] or " ".join(
+            normalized_query["mustTerms"] + normalized_query["shouldTerms"]
+        )
+        return CtsRequestModel(
+            jd=normalized_query["jd"],
+            keyword=keyword or None,
+            school=filters.get("school"),
+            company=filters.get("company"),
+            position=filters.get("position"),
+            workContent=filters.get("workContent"),
+            location=filters.get("location"),
+            degree=filters.get("degree"),
+            schoolType=filters.get("schoolType"),
+            workExperienceRange=filters.get("workExperienceRange"),
+            page=page_no,
+            pageSize=page_size,
+        )
 
     @staticmethod
-    def _read_error_response(exc: urllib_error.HTTPError) -> dict[str, Any]:
+    def _read_error_response(exc: urllib_error.HTTPError) -> JsonObject:
         try:
-            return json.loads(exc.read().decode("utf-8"))
-        except Exception:
+            payload: object = json.loads(exc.read().decode("utf-8"))
+        except (JSONDecodeError, UnicodeDecodeError):
             return {}
+        if isinstance(payload, dict):
+            return to_json_object(cast(object, payload))
+        return {}
 
     @staticmethod
-    def _map_candidate(candidate: dict[str, Any]) -> CandidateData:
-        external_id = resume_hash(candidate)
-        work_experience = sorted(candidate.get("workExperienceList") or [], key=lambda item: item.get("sortNum", 999))
-        latest_work = work_experience[0] if work_experience else {}
-        education_list = sorted(candidate.get("educationList") or [], key=lambda item: item.get("sortNum", 999))
-        latest_education = education_list[0] if education_list else {}
-        title = latest_work.get("title") or candidate.get("expectedJobCategory") or "匿名候选人"
-        company = latest_work.get("company") or "未知公司"
-        location = candidate.get("nowLocation") or candidate.get("expectedLocation") or "未知地点"
-        name = candidate.get("name") or candidate.get("resumeName") or f"匿名候选人-{external_id[:6]}"
+    def _map_candidate(candidate: CtsCandidateModel) -> CandidateData:
+        raw_candidate = to_json_object(candidate.model_dump(mode="json"))
+        external_id = resume_hash(raw_candidate)
+        work_experience = sorted(
+            candidate.workExperienceList,
+            key=lambda item: item.sortNum if item.sortNum is not None else 999,
+        )
+        latest_work = work_experience[0] if work_experience else None
+        title = (
+            (latest_work.title if latest_work else None)
+            or candidate.expectedJobCategory
+            or "匿名候选人"
+        )
+        company = (latest_work.company if latest_work else None) or "未知公司"
+        location = candidate.nowLocation or candidate.expectedLocation or "未知地点"
+        name = candidate.name or candidate.resumeName or f"匿名候选人-{external_id[:6]}"
+        projection = CtsResumeSourceAdapter._build_resume_projection(candidate)
         summary_parts = [
-            f"{candidate.get('workYear', 0)}年经验",
+            f"{candidate.workYear}年经验",
             title,
             company,
-            latest_education.get("school"),
-            latest_education.get("education"),
+            projection["education"][0]["school"] if projection["education"] else None,
+            projection["education"][0]["degree"] if projection["education"] else None,
         ]
-        work_summaries = candidate.get("workSummariesAll") or []
-        if work_summaries:
-            summary_parts.append(work_summaries[0][:120])
+        if projection["workSummaries"]:
+            summary_parts.append(projection["workSummaries"][0][:120])
         summary = " | ".join(part for part in summary_parts if part)
         return CandidateData(
             external_identity_id=external_id,
@@ -552,8 +629,52 @@ class CtsResumeSourceAdapter:
             summary=summary,
             email="",
             phone="",
-            resume=candidate,
+            resume_projection=projection,
         )
+
+    @staticmethod
+    def _build_resume_projection(candidate: CtsCandidateModel) -> ResumeProjectionPayload:
+        education_items = sorted(
+            candidate.educationList,
+            key=lambda item: item.sortNum if item.sortNum is not None else 999,
+        )
+        work_items = sorted(
+            candidate.workExperienceList,
+            key=lambda item: item.sortNum if item.sortNum is not None else 999,
+        )
+        education: list[ResumeEducationItemPayload] = [
+            {
+                "school": item.school or "未提供学校",
+                "degree": item.degree or item.education or "学历未知",
+                "major": item.speciality or "专业未知",
+                "startTime": item.startTime,
+                "endTime": item.endTime,
+            }
+            for item in education_items[:5]
+        ]
+        work_experience: list[ResumeWorkExperienceItemPayload] = [
+            {
+                "company": item.company or "未提供公司",
+                "title": item.title or "职位未知",
+                "duration": item.duration,
+                "startTime": item.startTime,
+                "endTime": item.endTime,
+                "summary": item.summary,
+            }
+            for item in work_items[:8]
+        ]
+        return {
+            "workYear": candidate.workYear,
+            "currentLocation": candidate.nowLocation,
+            "expectedLocation": candidate.expectedLocation,
+            "jobState": candidate.jobState,
+            "expectedSalary": candidate.expectedSalary,
+            "age": candidate.age,
+            "education": education,
+            "workExperience": work_experience,
+            "workSummaries": candidate.workSummariesAll[:5],
+            "projectNames": candidate.projectNameAll[:8],
+        }
 
 
 def build_resume_source(settings: Settings):
@@ -573,9 +694,13 @@ def build_llm(settings: Settings):
     if settings.llm_mode.lower() == "stub":
         return StubLLMAdapter()
     if settings.llm_provider.lower() != "openai":
-        raise RuntimeError(f"Unsupported CVM_LLM_PROVIDER: {settings.llm_provider}")
+        return MisconfiguredLLMAdapter(
+            f"Unsupported CVM_LLM_PROVIDER: {settings.llm_provider}",
+        )
     if not settings.llm_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required when CVM_LLM_MODE is not stub.")
+        return MisconfiguredLLMAdapter(
+            "OPENAI_API_KEY is required when CVM_LLM_MODE is not stub.",
+        )
     return OpenAILLMAdapter(
         api_key=settings.llm_api_key,
         model=settings.llm_model,

@@ -7,6 +7,6 @@ export type SearchRunStatusResponse = {
     status: string;
     progress: number;
     pageCount: number;
-    errorSummary?: string;
+    errorSummary?: string | null;
 };
 

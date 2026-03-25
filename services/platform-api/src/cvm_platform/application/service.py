@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Any
 
 from cvm_domain_kernel import new_id, now_utc
 from cvm_platform.application.dto import (
@@ -28,9 +27,33 @@ from cvm_platform.application.dto import (
 from cvm_platform.application.policies import resolve_llm_model_version, resume_hash
 from cvm_platform.application.ports import PlatformUnitOfWork
 from cvm_platform.application.runtime import PlatformRuntimeConfig
-from cvm_platform.domain.errors import AppError
+from cvm_platform.domain.errors import (
+    ConflictError,
+    ExternalDependencyError,
+    NotFoundError,
+    PermissionDeniedError,
+    ValidationError,
+)
 from cvm_platform.domain.ports import LLMPort, ResumeSourcePort
-from cvm_platform.domain.types import ConditionPlanDraftData, SearchPageData
+from cvm_platform.domain.types import (
+    CandidateCardPayload,
+    CandidateData,
+    ConditionPlanDraftData,
+    ConditionPlanDraftPayload,
+    EvidenceRef,
+    EvidenceRefPayload,
+    FailureSummaryPayload,
+    JsonObject,
+    LatencySummaryPayload,
+    NormalizedQueryPayload,
+    QueueSummaryPayload,
+    ResumeProjectionPayload,
+    SearchPageData,
+    SearchRunFailureCountPayload,
+    SearchRunStatusCountPayload,
+    StructuredFiltersPayload,
+    to_json_object,
+)
 
 
 class PlatformService:
@@ -57,7 +80,7 @@ class PlatformService:
             updated_at=timestamp,
         )
         self.uow.cases.save(case)
-        self._audit("system", "case", case.id, "case.created", "success", {"title": title})
+        self._audit("system", "case", case.id, "case.created", "success", to_json_object({"title": title}))
         self.uow.commit()
         return case
 
@@ -78,7 +101,7 @@ class PlatformService:
         case.updated_at = now_utc()
         self.uow.cases.save(case)
         self.uow.plans.save_jd_version(version)
-        self._audit("system", "jd_version", version.id, "jd_version.created", "success", {"caseId": case_id})
+        self._audit("system", "jd_version", version.id, "jd_version.created", "success", to_json_object({"caseId": case_id}))
         self.uow.commit()
         return version
 
@@ -104,7 +127,13 @@ class PlatformService:
             exclude_terms=draft.exclude_terms,
             structured_filters=draft.structured_filters,
             evidence_refs=[self._evidence_ref_to_dict(ref) for ref in draft.evidence_refs],
-            normalized_query={},
+            normalized_query=self._build_normalized_query(
+                jd_version.raw_text,
+                draft.must_terms,
+                draft.should_terms,
+                draft.exclude_terms,
+                draft.structured_filters,
+            ),
             confirmed_by=None,
             confirmed_at=None,
             created_at=timestamp,
@@ -122,7 +151,14 @@ class PlatformService:
         )
         self.uow.plans.save_plan(plan)
         self.uow.plans.save_keyword_draft_job(job)
-        self._audit("system", "keyword_draft_job", job.id, "keyword_draft.completed", "success", {"planId": plan.id})
+        self._audit(
+            "system",
+            "keyword_draft_job",
+            job.id,
+            "keyword_draft.completed",
+            "success",
+            to_json_object({"planId": plan.id}),
+        )
         self.uow.commit()
         return KeywordDraftJobResult(job=job, plan=plan)
 
@@ -134,14 +170,13 @@ class PlatformService:
     ) -> ConditionPlanRecord:
         plan = self._get_plan(plan_id)
         jd_version = self._get_jd_version(plan.case_id, plan.jd_version_id)
-        normalized_query = {
-            "jd": jd_version.raw_text,
-            "mustTerms": payload.must_terms,
-            "shouldTerms": payload.should_terms,
-            "excludeTerms": payload.exclude_terms,
-            "structuredFilters": payload.structured_filters,
-            "keyword": " ".join(payload.must_terms + payload.should_terms).strip(),
-        }
+        normalized_query = self._build_normalized_query(
+            jd_version.raw_text,
+            payload.must_terms,
+            payload.should_terms,
+            payload.exclude_terms,
+            payload.structured_filters,
+        )
         plan.must_terms = payload.must_terms
         plan.should_terms = payload.should_terms
         plan.exclude_terms = payload.exclude_terms
@@ -152,18 +187,25 @@ class PlatformService:
         plan.confirmed_by = confirmed_by
         plan.confirmed_at = now_utc()
         self.uow.plans.save_plan(plan)
-        self._audit(confirmed_by, "condition_plan", plan.id, "condition_plan.confirmed", "success", normalized_query)
+        self._audit(
+            confirmed_by,
+            "condition_plan",
+            plan.id,
+            "condition_plan.confirmed",
+            "success",
+            to_json_object(normalized_query),
+        )
         self.uow.commit()
         return plan
 
     def create_search_run(self, case_id: str, plan_id: str, page_budget: int, idempotency_key: str) -> SearchRunRecord:
         if page_budget <= 0:
-            raise AppError("INVALID_PAGINATION_PARAMS", "pageBudget must be positive.")
+            raise ValidationError("INVALID_PAGINATION_PARAMS", "pageBudget must be positive.")
         plan = self._get_plan(plan_id)
         if plan.case_id != case_id:
-            raise AppError("PLAN_CASE_MISMATCH", "Plan does not belong to case.")
+            raise ConflictError("PLAN_CASE_MISMATCH", "Plan does not belong to case.")
         if plan.status != "confirmed":
-            raise AppError("PLAN_NOT_CONFIRMED", "Condition plan must be confirmed before search.")
+            raise ConflictError("PLAN_NOT_CONFIRMED", "Condition plan must be confirmed before search.")
         existing = self.uow.search_runs.find_by_idempotency_key(idempotency_key)
         if existing:
             if not existing.workflow_id:
@@ -191,7 +233,14 @@ class PlatformService:
             finished_at=None,
         )
         self.uow.search_runs.save_run(run)
-        self._audit("system", "search_run", run.id, "search_run.created", "success", {"caseId": case_id, "planId": plan_id})
+        self._audit(
+            "system",
+            "search_run",
+            run.id,
+            "search_run.created",
+            "success",
+            to_json_object({"caseId": case_id, "planId": plan_id}),
+        )
         self.uow.commit()
         return run
 
@@ -224,16 +273,39 @@ class PlatformService:
     def get_search_run(self, run_id: str) -> SearchRunRecord:
         return self._get_run(run_id)
 
+    def fail_search_run_dispatch(
+        self,
+        run_id: str,
+        error_code: str,
+        error_message: str,
+    ) -> SearchRunRecord:
+        run = self._get_run(run_id)
+        run.status = "failed"
+        run.error_code = error_code
+        run.error_message = error_message
+        run.finished_at = now_utc()
+        self.uow.search_runs.save_run(run)
+        self._audit(
+            "system",
+            "search_run",
+            run.id,
+            "search_run.dispatch.failed",
+            "failure",
+            to_json_object({"errorCode": error_code, "errorMessage": error_message}),
+        )
+        self.uow.commit()
+        return run
+
     def get_search_pages(self, run_id: str, page_no: int | None = None) -> list[SearchRunPageRecord]:
         return self.uow.search_runs.list_pages(run_id, page_no)
 
     def get_candidate_detail(self, candidate_id: str) -> CandidateDetailRecord:
         candidate = self._get_candidate(candidate_id)
         if not candidate.latest_resume_snapshot_id:
-            raise AppError("RESUME_SNAPSHOT_NOT_FOUND", "Candidate resume snapshot missing.", 404)
+            raise NotFoundError("RESUME_SNAPSHOT_NOT_FOUND", "Candidate resume snapshot missing.")
         snapshot = self.uow.candidates.get_resume_snapshot(candidate.latest_resume_snapshot_id)
         if snapshot is None:
-            raise AppError("RESUME_SNAPSHOT_NOT_FOUND", "Candidate resume snapshot missing.", 404)
+            raise NotFoundError("RESUME_SNAPSHOT_NOT_FOUND", "Candidate resume snapshot missing.")
         analysis = self.uow.candidates.get_latest_analysis(snapshot.id)
         history = self.uow.candidates.list_verdict_history(candidate_id)
         return CandidateDetailRecord(
@@ -267,7 +339,14 @@ class PlatformService:
         )
         self.uow.candidates.save_candidate(candidate)
         self.uow.candidates.save_verdict_history(history)
-        self._audit(actor_id, "candidate", candidate_id, "candidate.verdict.saved", "success", {"verdict": verdict, "reasons": reasons})
+        self._audit(
+            actor_id,
+            "candidate",
+            candidate_id,
+            "candidate.verdict.saved",
+            "success",
+            to_json_object({"verdict": verdict, "reasons": reasons}),
+        )
         self.uow.commit()
         return candidate
 
@@ -277,7 +356,10 @@ class PlatformService:
         if existing:
             return existing
         if mask_policy == "sensitive" and not self.runtime_config.allow_sensitive_export:
-            raise AppError("NO_CONTACT_PERMISSION", "Sensitive export is disabled in local mode.", 403)
+            raise PermissionDeniedError(
+                "NO_CONTACT_PERMISSION",
+                "Sensitive export is disabled in local mode.",
+            )
         job = ExportJobRecord(
             id=new_id("exp"),
             case_id=case_id,
@@ -306,23 +388,40 @@ class PlatformService:
                 job.id,
                 "export.completed",
                 "failure",
-                {"maskPolicy": mask_policy, "reason": reason, "error": str(exc)},
+                to_json_object({"maskPolicy": mask_policy, "reason": reason, "error": str(exc)}),
             )
             self.uow.commit()
-            raise AppError("EXPORT_FAILED", "Failed to write export file.", 500) from exc
+            raise ExternalDependencyError("EXPORT_FAILED", "Failed to write export file.") from exc
 
         job.status = "completed"
         job.file_path = str(export_path)
         job.completed_at = now_utc()
         self.uow.exports.save_export_job(job)
-        self._audit("system", "export_job", job.id, "export.completed", "success", {"maskPolicy": mask_policy, "reason": reason})
+        self._audit(
+            "system",
+            "export_job",
+            job.id,
+            "export.completed",
+            "success",
+            to_json_object({"maskPolicy": mask_policy, "reason": reason}),
+        )
         self.uow.commit()
         return job
 
     def get_ops_summary(self) -> OpsSummaryRecord:
         run_counts = self.uow.search_runs.count_by_status()
         failure_counts_raw = self.uow.search_runs.count_failures_by_error_code()
-        failure_counts = {("null" if key is None else str(key)): value for key, value in failure_counts_raw.items()}
+        queue_counts: list[SearchRunStatusCountPayload] = [
+            {"status": status, "count": count}
+            for status, count in sorted(run_counts.items())
+        ]
+        failure_counts: list[SearchRunFailureCountPayload] = [
+            {"code": "null" if key is None else str(key), "count": value}
+            for key, value in sorted(
+                failure_counts_raw.items(),
+                key=lambda item: "null" if item[0] is None else str(item[0]),
+            )
+        ]
         durations = [
             (run.finished_at - run.started_at).total_seconds()
             for run in self.uow.search_runs.list_finished_runs()
@@ -330,9 +429,9 @@ class PlatformService:
         ]
         avg_latency = sum(durations) / len(durations) if durations else 0.0
         return OpsSummaryRecord(
-            queue={"searchRuns": run_counts},
-            failures={"searchRuns": failure_counts},
-            latency={"avgSearchRunSeconds": avg_latency},
+            queue=QueueSummaryPayload(searchRuns=queue_counts),
+            failures=FailureSummaryPayload(searchRuns=failure_counts),
+            latency=LatencySummaryPayload(avgSearchRunSeconds=avg_latency),
             version=OpsVersionRecord(
                 api=self.runtime_config.app_version,
                 api_build_id=self.runtime_config.build_id,
@@ -365,12 +464,12 @@ class PlatformService:
             created_at=now_utc(),
         )
         self.uow.eval_runs.save_eval_run(eval_run)
-        self._audit("system", "eval_run", eval_run.id, "eval.completed", "success", {"suiteId": suite_id})
+        self._audit("system", "eval_run", eval_run.id, "eval.completed", "success", to_json_object({"suiteId": suite_id}))
         self.uow.commit()
         return eval_run
 
     def _persist_page(self, run: SearchRunRecord, result: SearchPageData) -> None:
-        normalized_cards: list[dict[str, Any]] = []
+        normalized_cards: list[CandidateCardPayload] = []
         page = SearchRunPageRecord(
             id=new_id("page"),
             run_id=run.id,
@@ -404,7 +503,7 @@ class PlatformService:
         self.uow.search_runs.save_run(run)
         self.uow.commit()
 
-    def _upsert_candidate(self, case_id: str, candidate_data: Any) -> CandidateRecord:
+    def _upsert_candidate(self, case_id: str, candidate_data: CandidateData) -> CandidateRecord:
         candidate = self.uow.candidates.find_by_case_and_external_identity(case_id, candidate_data.external_identity_id)
         timestamp = now_utc()
         if candidate is None:
@@ -434,8 +533,8 @@ class PlatformService:
             candidate.email = candidate_data.email
             candidate.phone = candidate_data.phone
         candidate = self.uow.candidates.save_candidate(candidate)
-        payload = {"content": candidate_data.resume, "summary": candidate_data.summary}
-        source_hash = resume_hash(payload)
+        payload = candidate_data.resume_projection
+        source_hash = resume_hash(to_json_object(payload))
         snapshot = self.uow.candidates.find_resume_snapshot_by_source_hash(candidate.id, source_hash)
         if snapshot is None:
             snapshot = ResumeSnapshotRecord(
@@ -452,8 +551,8 @@ class PlatformService:
                 model_version="stub-1",
                 prompt_version="resume-summary-v1",
                 summary=candidate.summary,
-                evidence_spans=self._candidate_evidence_spans(candidate_data.resume),
-                risk_flags=self._candidate_risk_flags(candidate_data.resume),
+                evidence_spans=self._candidate_evidence_spans(candidate_data.resume_projection),
+                risk_flags=self._candidate_risk_flags(candidate_data.resume_projection),
                 status="completed",
                 created_at=now_utc(),
             )
@@ -463,33 +562,39 @@ class PlatformService:
         return self.uow.candidates.save_candidate(candidate)
 
     @staticmethod
-    def _candidate_evidence_spans(resume: dict[str, Any]) -> list[str]:
+    def _candidate_evidence_spans(resume: ResumeProjectionPayload) -> list[str]:
         evidence: list[str] = []
-        for key in ("projectNameAll", "workSummariesAll"):
-            value = resume.get(key)
-            if isinstance(value, str) and value.strip():
-                evidence.extend([item.strip() for item in value.split("；") if item.strip()])
+        evidence.extend(resume["projectNames"][:3])
+        evidence.extend(resume["workSummaries"][:3])
         if not evidence:
-            for experience in resume.get("workExperienceList", [])[:3]:
-                company = str(experience.get("companyName") or "").strip()
-                title = str(experience.get("positionName") or "").strip()
+            for experience in resume["workExperience"][:3]:
+                company = experience["company"].strip()
+                title = experience["title"].strip()
                 summary = " / ".join(part for part in (company, title) if part)
                 if summary:
                     evidence.append(summary)
         return evidence[:5]
 
     @staticmethod
-    def _candidate_risk_flags(resume: dict[str, Any]) -> list[str]:
+    def _candidate_risk_flags(resume: ResumeProjectionPayload) -> list[str]:
         flags: list[str] = []
-        expected_salary = str(resume.get("expectedSalary") or "").strip()
+        expected_salary = (resume["expectedSalary"] or "").strip()
         if expected_salary:
             flags.append(f"Expected salary: {expected_salary}")
-        job_state = str(resume.get("jobState") or "").strip()
+        job_state = (resume["jobState"] or "").strip()
         if job_state:
             flags.append(f"Job state: {job_state}")
         return flags[:3]
 
-    def _audit(self, actor_id: str, target_type: str, target_id: str, action: str, result: str, metadata: dict) -> None:
+    def _audit(
+        self,
+        actor_id: str,
+        target_type: str,
+        target_id: str,
+        action: str,
+        result: str,
+        metadata: JsonObject,
+    ) -> None:
         self.uow.audit_logs.save_audit_log(
             AuditLogRecord(
                 id=new_id("audit"),
@@ -506,31 +611,31 @@ class PlatformService:
     def _get_case(self, case_id: str) -> CaseRecord:
         case = self.uow.cases.get(case_id)
         if case is None:
-            raise AppError("CASE_NOT_FOUND", f"Case {case_id} not found.", 404)
+            raise NotFoundError("CASE_NOT_FOUND", f"Case {case_id} not found.")
         return case
 
     def _get_jd_version(self, case_id: str, jd_version_id: str) -> JDVersionRecord:
         jd_version = self.uow.plans.get_jd_version(case_id, jd_version_id)
         if jd_version is None:
-            raise AppError("JD_VERSION_NOT_FOUND", f"JD version {jd_version_id} not found.", 404)
+            raise NotFoundError("JD_VERSION_NOT_FOUND", f"JD version {jd_version_id} not found.")
         return jd_version
 
     def _get_plan(self, plan_id: str) -> ConditionPlanRecord:
         plan = self.uow.plans.get_plan(plan_id)
         if plan is None:
-            raise AppError("PLAN_NOT_FOUND", f"Plan {plan_id} not found.", 404)
+            raise NotFoundError("PLAN_NOT_FOUND", f"Plan {plan_id} not found.")
         return plan
 
     def _get_run(self, run_id: str) -> SearchRunRecord:
         run = self.uow.search_runs.get_run(run_id)
         if run is None:
-            raise AppError("RUN_NOT_FOUND", f"Run {run_id} not found.", 404)
+            raise NotFoundError("RUN_NOT_FOUND", f"Run {run_id} not found.")
         return run
 
     def _get_candidate(self, candidate_id: str) -> CandidateRecord:
         candidate = self.uow.candidates.get_candidate(candidate_id)
         if candidate is None:
-            raise AppError("CANDIDATE_NOT_FOUND", f"Candidate {candidate_id} not found.", 404)
+            raise NotFoundError("CANDIDATE_NOT_FOUND", f"Candidate {candidate_id} not found.")
         return candidate
 
     @staticmethod
@@ -543,7 +648,7 @@ class PlatformService:
         return "***"
 
     @staticmethod
-    def _draft_to_payload(draft: ConditionPlanDraftData) -> dict[str, Any]:
+    def _draft_to_payload(draft: ConditionPlanDraftData) -> ConditionPlanDraftPayload:
         return {
             "mustTerms": draft.must_terms,
             "shouldTerms": draft.should_terms,
@@ -553,8 +658,25 @@ class PlatformService:
         }
 
     @staticmethod
-    def _evidence_ref_to_dict(ref: Any) -> dict[str, str]:
+    def _evidence_ref_to_dict(ref: EvidenceRef) -> EvidenceRefPayload:
         return {"label": ref.label, "excerpt": ref.excerpt}
+
+    @staticmethod
+    def _build_normalized_query(
+        jd_text: str,
+        must_terms: list[str],
+        should_terms: list[str],
+        exclude_terms: list[str],
+        structured_filters: StructuredFiltersPayload,
+    ) -> NormalizedQueryPayload:
+        return {
+            "jd": jd_text,
+            "mustTerms": must_terms,
+            "shouldTerms": should_terms,
+            "excludeTerms": exclude_terms,
+            "structuredFilters": structured_filters,
+            "keyword": " ".join(must_terms + should_terms).strip(),
+        }
 
     def _build_export_path(self, case_id: str, export_job_id: str) -> Path:
         self.runtime_config.exports_dir.mkdir(parents=True, exist_ok=True)

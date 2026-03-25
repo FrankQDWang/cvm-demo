@@ -30,9 +30,11 @@ export const $SearchRunPageSnapshot = {
         },
         errorCode: {
             type: 'string',
+            isNullable: true,
         },
         errorMessage: {
             type: 'string',
+            isNullable: true,
         },
     },
 } as const;

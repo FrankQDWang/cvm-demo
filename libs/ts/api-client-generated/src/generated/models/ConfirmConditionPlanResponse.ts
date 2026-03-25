@@ -2,9 +2,10 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { NormalizedQuery } from './NormalizedQuery';
 export type ConfirmConditionPlanResponse = {
     planId: string;
     status: string;
-    normalizedQuery: Record<string, any>;
+    normalizedQuery: NormalizedQuery;
 };
 

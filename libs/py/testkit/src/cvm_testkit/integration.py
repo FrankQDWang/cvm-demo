@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import os
 import time
+from typing import cast
 from uuid import uuid4
 
 import httpx
+
+
+def _read_json_object(response: httpx.Response) -> dict[str, object]:
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("Expected JSON object response from the API.")
+    return cast(dict[str, object], payload)
 
 
 def api_base_url() -> str:
@@ -45,7 +53,7 @@ def wait_for_search_run(
     while time.monotonic() < deadline:
         response = client.get(f"/api/v1/search-runs/{run_id}")
         response.raise_for_status()
-        latest_status = response.json()
+        latest_status = _read_json_object(response)
         if latest_status.get("status") in {"completed", "failed"}:
             return latest_status
         time.sleep(poll_interval_seconds)
@@ -68,7 +76,7 @@ def wait_for_temporal_diagnostic(
     while time.monotonic() < deadline:
         response = client.get(f"/api/v1/ops/temporal/search-runs/{run_id}")
         response.raise_for_status()
-        latest_diagnostic = response.json()
+        latest_diagnostic = _read_json_object(response)
         if latest_diagnostic.get("temporalExecutionFound") and latest_diagnostic.get("visibilityIndexed"):
             return latest_diagnostic
         time.sleep(poll_interval_seconds)

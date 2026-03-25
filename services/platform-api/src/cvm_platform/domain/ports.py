@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .types import ConditionPlanDraftData, SearchPageData
+from .types import ConditionPlanDraftData, NormalizedQueryPayload, SearchPageData
 
 
 class LLMPort(Protocol):
@@ -15,4 +15,9 @@ class LLMPort(Protocol):
 
 
 class ResumeSourcePort(Protocol):
-    def search_candidates(self, normalized_query: dict, page_no: int, page_size: int) -> SearchPageData: ...
+    def search_candidates(
+        self,
+        normalized_query: NormalizedQueryPayload,
+        page_no: int,
+        page_size: int,
+    ) -> SearchPageData: ...

@@ -1,0 +1,48 @@
+{
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": [
+    "services/platform-api/src",
+    "services/temporal-worker/src",
+    "services/eval-runner/src",
+    "libs/py/domain-kernel/src",
+    "libs/py/testkit/src"
+  ],
+  "exclude": [
+    ".venv",
+    "docs/_generated",
+    "tests",
+    "tools/codegen",
+    "tools/ci",
+    "tools/smoke",
+    "var",
+    "**/__pycache__"
+  ],
+  "strict": [
+    "services/platform-api/src",
+    "services/temporal-worker/src",
+    "services/eval-runner/src",
+    "libs/py/domain-kernel/src",
+    "libs/py/testkit/src"
+  ],
+  "reportImplicitStringConcatenation": "none",
+  "reportCallInDefaultInitializer": "none",
+  "reportMissingTypeStubs": false,
+  "reportUnannotatedClassAttribute": "none",
+  "reportUnusedFunction": "none",
+  "reportUnusedCallResult": "none",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "services/platform-api/src",
+        "services/temporal-worker/src",
+        "services/eval-runner/src",
+        "libs/py/contracts-generated/src",
+        "libs/py/domain-kernel/src",
+        "libs/py/testkit/src"
+      ]
+    }
+  ]
+}

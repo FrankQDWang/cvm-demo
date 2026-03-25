@@ -8,8 +8,8 @@ export const $CandidateDetailResponse = {
             type: 'CandidateCard',
             isRequired: true,
         },
-        resumeSnapshot: {
-            type: 'ResumeSnapshot',
+        resumeView: {
+            type: 'CandidateResumeView',
             isRequired: true,
         },
         aiAnalysis: {

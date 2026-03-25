@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^(services/|libs/py/|tests/|tools/)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+
+  - repo: local
+    hooks:
+      - id: eslint-ts
+        name: eslint-ts
+        entry: pnpm exec eslint --max-warnings=0 apps/web-user/src apps/web-ops/src apps/web-evals/src libs/ts/platform-api-client/src
+        language: system
+        pass_filenames: false
+
+      - id: semgrep
+        name: semgrep
+        entry: uv run semgrep --config semgrep.yml --error
+        language: system
+        pass_filenames: false

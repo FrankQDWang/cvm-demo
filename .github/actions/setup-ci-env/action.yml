@@ -1,0 +1,60 @@
+name: Setup CI Environment
+description: Prepare the shared Python and optional Node toolchain for CI jobs.
+
+inputs:
+  python-version:
+    description: Python version used by setup-python and uv.
+    required: false
+    default: "3.12"
+  install-node:
+    description: Install mise and provision Node and pnpm.
+    required: false
+    default: "false"
+  install-node-dependencies:
+    description: Run pnpm install after Node and pnpm are provisioned.
+    required: false
+    default: "false"
+  sync-python-workspace:
+    description: Run uv sync --locked for the Python workspace.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install mise
+      if: ${{ inputs.install-node == 'true' || inputs.install-node-dependencies == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl -fsSL https://mise.run | sh
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+    - name: Provision Node and pnpm
+      if: ${{ inputs.install-node == 'true' || inputs.install-node-dependencies == 'true' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        mise trust --yes
+        mise install
+        mise exec -- node --version
+        mise exec -- corepack enable
+        mise exec -- corepack install
+        mise exec -- pnpm --version
+    - name: Sync Python workspace
+      if: ${{ inputs.sync-python-workspace == 'true' }}
+      shell: bash
+      run: uv sync --locked
+    - name: Install Node dependencies
+      if: ${{ inputs.install-node-dependencies == 'true' }}
+      shell: bash
+      run: mise exec -- pnpm install --frozen-lockfile

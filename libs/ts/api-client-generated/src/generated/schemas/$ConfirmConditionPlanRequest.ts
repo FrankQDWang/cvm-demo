@@ -3,15 +3,46 @@
 /* tslint:disable */
 /* eslint-disable */
 export const $ConfirmConditionPlanRequest = {
-    type: 'all-of',
-    contains: [{
-        type: 'ConditionPlanDraft',
-    }, {
-        properties: {
-            confirmedBy: {
+    properties: {
+        mustTerms: {
+            type: 'array',
+            contains: {
                 type: 'string',
-                isRequired: true,
+                minLength: 1,
             },
+            isRequired: true,
         },
-    }],
+        shouldTerms: {
+            type: 'array',
+            contains: {
+                type: 'string',
+                minLength: 1,
+            },
+            isRequired: true,
+        },
+        excludeTerms: {
+            type: 'array',
+            contains: {
+                type: 'string',
+                minLength: 1,
+            },
+            isRequired: true,
+        },
+        structuredFilters: {
+            type: 'StructuredFilters',
+            isRequired: true,
+        },
+        evidenceRefs: {
+            type: 'array',
+            contains: {
+                type: 'EvidenceRef',
+            },
+            isRequired: true,
+        },
+        confirmedBy: {
+            type: 'string',
+            isRequired: true,
+            minLength: 1,
+        },
+    },
 } as const;

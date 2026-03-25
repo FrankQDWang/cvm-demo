@@ -22,6 +22,7 @@ export const $SearchRunStatusResponse = {
         },
         errorSummary: {
             type: 'string',
+            isNullable: true,
         },
     },
 } as const;

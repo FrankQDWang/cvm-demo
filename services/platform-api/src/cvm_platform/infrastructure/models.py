@@ -5,6 +5,17 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from cvm_platform.domain.types import (
+    CandidateCardPayload,
+    ConditionPlanDraftPayload,
+    EvalSummaryMetricsPayload,
+    EvidenceRefPayload,
+    JsonObject,
+    NormalizedQueryPayload,
+    ResumeProjectionPayload,
+    StructuredFiltersPayload,
+)
+
 from .db import Base
 
 
@@ -40,7 +51,7 @@ class KeywordDraftJobModel(Base):
     status: Mapped[str] = mapped_column(String(32))
     model_version: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[str] = mapped_column(String(64))
-    draft_payload: Mapped[dict] = mapped_column(JSON)
+    draft_payload: Mapped[ConditionPlanDraftPayload] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -52,12 +63,12 @@ class ConditionPlanModel(Base):
     case_id: Mapped[str] = mapped_column(String(64), index=True)
     jd_version_id: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32))
-    must_terms: Mapped[list] = mapped_column(JSON)
-    should_terms: Mapped[list] = mapped_column(JSON)
-    exclude_terms: Mapped[list] = mapped_column(JSON)
-    structured_filters: Mapped[dict] = mapped_column(JSON)
-    evidence_refs: Mapped[list] = mapped_column(JSON)
-    normalized_query: Mapped[dict] = mapped_column(JSON)
+    must_terms: Mapped[list[str]] = mapped_column(JSON)
+    should_terms: Mapped[list[str]] = mapped_column(JSON)
+    exclude_terms: Mapped[list[str]] = mapped_column(JSON)
+    structured_filters: Mapped[StructuredFiltersPayload] = mapped_column(JSON)
+    evidence_refs: Mapped[list[EvidenceRefPayload]] = mapped_column(JSON)
+    normalized_query: Mapped[NormalizedQueryPayload] = mapped_column(JSON)
     confirmed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -91,9 +102,9 @@ class SearchRunPageModel(Base):
     run_id: Mapped[str] = mapped_column(String(64), index=True)
     page_no: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(32))
-    upstream_request: Mapped[dict] = mapped_column(JSON)
-    upstream_response: Mapped[dict] = mapped_column(JSON)
-    normalized_cards: Mapped[list] = mapped_column(JSON)
+    upstream_request: Mapped[JsonObject] = mapped_column(JSON)
+    upstream_response: Mapped[JsonObject] = mapped_column(JSON)
+    normalized_cards: Mapped[list[CandidateCardPayload]] = mapped_column(JSON)
     total: Mapped[int] = mapped_column(Integer)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -128,7 +139,7 @@ class ResumeSnapshotModel(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     case_candidate_id: Mapped[str] = mapped_column(String(64), index=True)
     source_hash: Mapped[str] = mapped_column(String(128))
-    payload: Mapped[dict] = mapped_column(JSON)
+    payload: Mapped[ResumeProjectionPayload] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -140,8 +151,8 @@ class ResumeAnalysisJobModel(Base):
     model_version: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[str] = mapped_column(String(64))
     summary: Mapped[str] = mapped_column(Text)
-    evidence_spans: Mapped[list] = mapped_column(JSON)
-    risk_flags: Mapped[list] = mapped_column(JSON)
+    evidence_spans: Mapped[list[str]] = mapped_column(JSON)
+    risk_flags: Mapped[list[str]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -152,7 +163,7 @@ class VerdictHistoryModel(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     case_candidate_id: Mapped[str] = mapped_column(String(64), index=True)
     verdict: Mapped[str] = mapped_column(String(32))
-    reasons: Mapped[list] = mapped_column(JSON)
+    reasons: Mapped[list[str]] = mapped_column(JSON)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor_id: Mapped[str] = mapped_column(String(64))
     resume_snapshot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -183,7 +194,7 @@ class AuditLogModel(Base):
     target_id: Mapped[str] = mapped_column(String(64), index=True)
     action: Mapped[str] = mapped_column(String(64))
     result: Mapped[str] = mapped_column(String(32))
-    metadata_json: Mapped[dict] = mapped_column(JSON)
+    metadata_json: Mapped[JsonObject] = mapped_column(JSON)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -196,6 +207,6 @@ class EvalRunModel(Base):
     target_version: Mapped[str] = mapped_column(String(64))
     baseline_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(32))
-    summary_metrics: Mapped[dict] = mapped_column(JSON)
+    summary_metrics: Mapped[EvalSummaryMetricsPayload] = mapped_column(JSON)
     blocking_result: Mapped[bool] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

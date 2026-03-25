@@ -7,14 +7,17 @@ export const $CreateEvalRunRequest = {
         suiteId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         datasetId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         targetVersion: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

@@ -6,7 +6,7 @@ import type { Verdict } from './Verdict';
 export type VerdictRecord = {
     verdict: Verdict;
     reasons: Array<string>;
-    notes?: string;
+    notes?: string | null;
     actorId: string;
     createdAt: string;
 };

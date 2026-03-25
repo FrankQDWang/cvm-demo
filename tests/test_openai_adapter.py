@@ -4,7 +4,13 @@ import json
 
 import pytest
 
-from cvm_platform.infrastructure.adapters import OpenAILLMAdapter, StubLLMAdapter, build_llm
+from cvm_platform.domain.errors import ValidationError
+from cvm_platform.infrastructure.adapters import (
+    MisconfiguredLLMAdapter,
+    OpenAILLMAdapter,
+    StubLLMAdapter,
+    build_llm,
+)
 from cvm_platform.settings.config import Settings
 
 
@@ -30,8 +36,11 @@ def test_build_llm_returns_stub_adapter_for_stub_mode() -> None:
 def test_build_llm_requires_api_key_for_live_openai(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("CVM_LLM_API_KEY", raising=False)
-    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-        build_llm(Settings(_env_file=None, llm_mode="live", llm_provider="openai", llm_api_key=""))
+    adapter = build_llm(Settings(_env_file=None, llm_mode="live", llm_provider="openai", llm_api_key=""))
+    assert isinstance(adapter, MisconfiguredLLMAdapter)
+
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
+        adapter.draft_keywords("Need Python", "gpt-5.4-mini", "draft-v1")
 
 
 def test_openai_adapter_uses_configured_default_model_for_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,6 +8,6 @@ export type SaveVerdictRequest = {
     reasons: Array<string>;
     notes?: string;
     actorId: string;
-    resumeSnapshotId?: string;
+    resumeSnapshotId?: string | null;
 };
 

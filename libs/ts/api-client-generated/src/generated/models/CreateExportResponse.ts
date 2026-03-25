@@ -5,6 +5,6 @@
 export type CreateExportResponse = {
     exportJobId: string;
     status: string;
-    filePath?: string;
+    filePath?: string | null;
 };
 

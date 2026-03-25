@@ -21,9 +21,11 @@ export const $SaveVerdictRequest = {
         actorId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         resumeSnapshotId: {
             type: 'string',
+            isNullable: true,
         },
     },
 } as const;

@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cvm-postgres
     environment:
       POSTGRES_USER: ${CVM_POSTGRES_USER:-cvm}
       POSTGRES_PASSWORD: ${CVM_POSTGRES_PASSWORD:-cvm}
@@ -18,7 +17,6 @@ services:
 
   opensearch:
     image: opensearchproject/opensearch:${CVM_OPENSEARCH_VERSION:-2.19.1}
-    container_name: cvm-opensearch
     environment:
       discovery.type: single-node
       bootstrap.memory_lock: "true"
@@ -37,7 +35,6 @@ services:
 
   temporal:
     image: temporalio/auto-setup:1.29.4
-    container_name: cvm-temporal
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,19 +65,17 @@ services:
 
   temporal-ui:
     image: temporalio/ui:2.48.0
-    container_name: cvm-temporal-ui
     depends_on:
       temporal:
         condition: service_started
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_UI_PORT: ${CVM_TEMPORAL_UI_PORT:-8080}
+      TEMPORAL_UI_PORT: 8080
     ports:
       - "${CVM_TEMPORAL_UI_PORT:-8080}:8080"
 
   temporal-admin-tools:
     image: temporalio/admin-tools:${CVM_TEMPORAL_ADMINTOOLS_VERSION:-1.29}
-    container_name: cvm-temporal-admin-tools
     depends_on:
       temporal:
         condition: service_healthy
@@ -98,7 +93,6 @@ services:
     build:
       context: .
       dockerfile: infra/docker/python-app.Dockerfile
-    container_name: cvm-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,14 +108,14 @@ services:
       CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
       CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
       CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
-      CVM_LLM_MODE: ${CVM_LLM_MODE:-stub}
+      CVM_LLM_MODE: ${CVM_LLM_MODE:-live}
       CVM_LLM_PROVIDER: ${CVM_LLM_PROVIDER:-openai}
       CVM_LLM_MODEL: ${CVM_LLM_MODEL:-gpt-5.4-mini}
       CVM_LLM_TIMEOUT_SECONDS: ${CVM_LLM_TIMEOUT_SECONDS:-30}
       CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-mock}
+      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-cts}
       CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
       CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
       CVM_CTS_TENANT_SECRET: ${CVM_CTS_TENANT_SECRET:-}
@@ -155,7 +149,6 @@ services:
     build:
       context: .
       dockerfile: infra/docker/python-app.Dockerfile
-    container_name: cvm-worker
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,14 +164,14 @@ services:
       CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
       CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
       CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
-      CVM_LLM_MODE: ${CVM_LLM_MODE:-stub}
+      CVM_LLM_MODE: ${CVM_LLM_MODE:-live}
       CVM_LLM_PROVIDER: ${CVM_LLM_PROVIDER:-openai}
       CVM_LLM_MODEL: ${CVM_LLM_MODEL:-gpt-5.4-mini}
       CVM_LLM_TIMEOUT_SECONDS: ${CVM_LLM_TIMEOUT_SECONDS:-30}
       CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-mock}
+      CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-cts}
       CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
       CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
       CVM_CTS_TENANT_SECRET: ${CVM_CTS_TENANT_SECRET:-}
@@ -197,7 +190,6 @@ services:
       args:
         APP_DIR: apps/web-user
         APP_NAME: web-user
-    container_name: cvm-web-user
     depends_on:
       api:
         condition: service_healthy
@@ -216,7 +208,6 @@ services:
       args:
         APP_DIR: apps/web-ops
         APP_NAME: web-ops
-    container_name: cvm-web-ops
     depends_on:
       api:
         condition: service_healthy
@@ -235,7 +226,6 @@ services:
       args:
         APP_DIR: apps/web-evals
         APP_NAME: web-evals
-    container_name: cvm-web-evals
     depends_on:
       api:
         condition: service_healthy

@@ -2,18 +2,14 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export const $ResumeSnapshot = {
+export const $CandidateResumeView = {
     properties: {
-        id: {
+        snapshotId: {
             type: 'string',
             isRequired: true,
         },
-        content: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+        projection: {
+            type: 'ResumeProjection',
             isRequired: true,
         },
     },
