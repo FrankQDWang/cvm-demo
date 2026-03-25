@@ -130,3 +130,66 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose down --remove-orphans
+
+  eval-critical:
+    timeout-minutes: 45
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - docker-cvm-demo
+    env:
+      UV_PYTHON: "3.12"
+      COMPOSE_PROJECT_NAME: cvm-eval-${{ github.run_id }}
+      CVM_POSTGRES_PORT: "35432"
+      CVM_API_PORT: "38010"
+      CVM_TEMPORAL_PORT: "37233"
+      CVM_TEMPORAL_UI_PORT: "38080"
+      CVM_OPENSEARCH_PORT: "39200"
+      CVM_RESUME_SOURCE_MODE: "mock"
+      CVM_LLM_MODE: "stub"
+      CVM_EXTERNAL_STACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
+        with:
+          python-version: "3.12"
+      - name: Resolve stack host
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import socket
+
+          stack_host = "127.0.0.1"
+          for candidate in ("host.docker.internal", "gateway.docker.internal", "127.0.0.1"):
+              try:
+                  socket.getaddrinfo(candidate, None)
+              except socket.gaierror:
+                  continue
+              stack_host = candidate
+              break
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"CVM_STACK_HOST={stack_host}\n")
+              env_file.write(f"CVM_TEST_API_BASE_URL=http://{stack_host}:{os.environ['CVM_API_PORT']}\n")
+              env_file.write(f"CVM_TEMPORAL_HOST={stack_host}:{os.environ['CVM_TEMPORAL_PORT']}\n")
+              env_file.write(f"CVM_OPENSEARCH_BASE_URL=http://{stack_host}:{os.environ['CVM_OPENSEARCH_PORT']}\n")
+              env_file.write(f"CVM_TEMPORAL_UI_BASE_URL=http://{stack_host}:{os.environ['CVM_TEMPORAL_UI_PORT']}\n")
+          PY
+      - name: Bring up stack
+        run: docker compose up -d --build --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
+      - name: Eval Critical
+        run: make eval-critical
+      - name: Collect eval diagnostics
+        if: failure()
+        run: ./tools/ci/collect_compose_diagnostics.sh .artifacts/eval-critical
+      - name: Upload eval diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-critical-diagnostics-${{ github.run_id }}
+          path: .artifacts/eval-critical
+      - name: Tear down stack
+        if: always()
+        run: docker compose down --remove-orphans

@@ -9,7 +9,7 @@ SHELL := /bin/zsh
 # - make down: 停止并清理当前 compose 资源
 # - make status: 查看容器状态
 # - make dev-api / dev-worker / dev-web-*: 宿主机开发模式启动
-.PHONY: codegen validate validate-static validate-contracts test test-stack test-stack-run eval-critical eval-critical-run verify-images dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
+.PHONY: codegen validate validate-static validate-contracts test test-stack test-stack-run eval-critical eval-critical-run verify-images install-single-branch-guard dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
 
 # 根据 contract 重新生成 generated 代码
 codegen:
@@ -72,6 +72,11 @@ eval-critical-run:
 # 运行时 Docker 制品验证：确保五个镜像都能从当前工作树成功构建
 verify-images:
 	docker compose build api worker web-user web-ops web-evals
+
+# 启用仓库级单分支模式：只允许 main，本地 hook 会拒绝创建/提交/推送其他分支
+install-single-branch-guard:
+	git config --local core.hooksPath .githooks
+	@echo "Single-branch guard enabled with core.hooksPath=.githooks"
 
 # 宿主机启动 API，读取 .env 端口配置
 dev-api:

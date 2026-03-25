@@ -87,3 +87,10 @@ Turn PRD/TDD from narrative PDF inputs into repository-native execution controls
 - Not completed:
 - Assumptions:
 - Next step:
+
+## Close-Out
+
+- Validated: [Requirement Traceability](../../PRODUCT/requirement-traceability.md) remains the repository-native execution bridge; [MVP Slice Template](../templates/mvp-slice-template.md) remains the only template for non-trivial slices; successor slice plans for Slice 02-05 now exist under `docs/EXEC-PLANS/active/`; the historical bootstrap, dependency, hard-harness, and CI hardening plans are archived under `docs/EXEC-PLANS/completed/`; link validation passes after the move.
+- Not completed: none within Slice 01 itself; later slices must keep the traceability audit current as implementation changes land.
+- Assumptions: the current `Target Slice` assignments in [Requirement Traceability](../../PRODUCT/requirement-traceability.md) remain the active execution partition until a later slice explicitly remaps a row.
+- Next step: treat Slice 02-05 as the only active execution sources and update traceability rows from those slices going forward.

@@ -6,12 +6,22 @@
 - [Contracts Index](CONTRACTS/index.md)
 - [Observability](OBSERVABILITY/index.md)
 - [Evals](EVALS/index.md)
-- [Execution Plans Active](EXEC-PLANS/active/mvp-slice-01-governance-plan.md)
-- [CI Pipeline Hardening Plan](EXEC-PLANS/active/ci-pipeline-hardening-plan.md)
 - [Execution Plan Template](EXEC-PLANS/templates/mvp-slice-template.md)
-- [Bootstrap Plan](EXEC-PLANS/active/bootstrap-plan.md)
-- [Dependency Governance Plan](EXEC-PLANS/active/dependency-governance-plan.md)
-- [Hard Harness Plan](EXEC-PLANS/active/hard-harness-plan.md)
+
+## Execution Plans Active
+
+- [MVP Slice 02 JD KW SearchRun](EXEC-PLANS/active/mvp-slice-02-jd-kw-searchrun-plan.md)
+- [MVP Slice 03 List Detail Verdict](EXEC-PLANS/active/mvp-slice-03-list-detail-verdict-plan.md)
+- [MVP Slice 04 Export Audit Ops](EXEC-PLANS/active/mvp-slice-04-export-audit-ops-plan.md)
+- [MVP Slice 05 Harness Evals Gates](EXEC-PLANS/active/mvp-slice-05-harness-evals-gates-plan.md)
+
+## Execution Plans Completed
+
+- [MVP Slice 01 Governance](EXEC-PLANS/completed/mvp-slice-01-governance-plan.md)
+- [Bootstrap Plan](EXEC-PLANS/completed/bootstrap-plan.md)
+- [Dependency Governance Plan](EXEC-PLANS/completed/dependency-governance-plan.md)
+- [Hard Harness Plan](EXEC-PLANS/completed/hard-harness-plan.md)
+- [CI Pipeline Hardening Plan](EXEC-PLANS/completed/ci-pipeline-hardening-plan.md)
 
 Rules:
 

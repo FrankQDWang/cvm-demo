@@ -88,7 +88,7 @@ Rules:
 
 ## Close-Out
 
-- Validated: `make test`; `uv run python` YAML parse for `.github/**/*.yml`; `./tools/ci/collect_compose_diagnostics.sh .artifacts/local-smoke`; `make verify-images`; stack-backed validation for `make test-stack`, `./tools/ci/run_eval_gate.sh`, and `make temporal-visibility-smoke`, with deterministic `mock + stub` injected by the test harness and CI workflow env rather than `.env`
+- Validated: `make test`; `uv run python` YAML parse for `.github/**/*.yml`; `./tools/ci/collect_compose_diagnostics.sh .artifacts/local-smoke`; `make verify-images`; stack-backed validation for `make test-stack`, `make eval-critical`, `./tools/ci/run_eval_gate.sh`, and `make temporal-visibility-smoke`, with deterministic `mock + stub` injected by the test harness and CI workflow env rather than `.env`; `.github/workflows/validate.yml` now also contains an explicit deterministic `eval-critical` job
 - Not completed: runner segmentation, release publishing, and PR-blocking eval remain deferred by design.
 - Assumptions: `main` is the default branch; Docker is available on the designated self-hosted runner pool; stack-backed CI jobs should stay deterministic and must not depend on live CTS or OpenAI responses.
-- Next step: observe several successful nightly and main-branch runs, then decide whether `build-verify` or selected nightly checks should graduate into stricter gate status.
+- Next step: keep this plan as the completed CI hardening baseline and route any remaining harness, eval, and gate expansion through Slice 05.

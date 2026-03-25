@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+state="${1:-}"
+zero_oid="0000000000000000000000000000000000000000"
+
+if [ "$state" != "prepared" ]; then
+  exit 0
+fi
+
+while read -r old_oid new_oid ref_name; do
+  case "$ref_name" in
+    refs/heads/main)
+      continue
+      ;;
+    refs/heads/*)
+      if [ "$new_oid" = "$zero_oid" ]; then
+        continue
+      fi
+      printf '%s\n' "single-branch mode: refusing update to '$ref_name'; only refs/heads/main is allowed in this repository." >&2
+      exit 1
+      ;;
+  esac
+done

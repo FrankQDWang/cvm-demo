@@ -6,6 +6,7 @@
 - Start with `docs/00-INDEX.md` and `docs/ARCHITECTURE/context-map.md`.
 
 ## Hard Rules
+- Single-branch repository: never create, switch to, or push any branch other than `main`.
 - Do not edit `docs/_generated` by hand.
 - Do not edit `libs/py/contracts-generated` or `libs/ts/api-client-generated` by hand.
 - Do not bypass `contracts/` when changing boundary DTOs.

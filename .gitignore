@@ -2,6 +2,7 @@
 .env
 .env.local
 .idea/
+.hypothesis/
 .pytest_cache/
 .ruff_cache/
 .venv/

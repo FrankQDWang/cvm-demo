@@ -33,3 +33,10 @@ Turn the repository from soft local checks into a repo-local hard harness:
 - `make validate-static`, `make validate-contracts`, `make test`, and `make test-stack` exist and are independently enforceable
 - deterministic tests run without a pre-started local stack
 - stack smoke remains available as a separate gate
+
+## Close-Out
+
+- Validated: the checked-in contract exposes the explicit error and projection schemas; strict boundary validation rejects malformed CTS/OpenAI payloads; `/openapi.json` is served from the checked-in OpenAPI file; `make validate-static`, `make validate-contracts`, `make test`, `make test-stack`, and `make eval-critical` all pass.
+- Not completed: broader performance, capacity, and eval-platform work is not part of this baseline hard harness and moves to Slice 04 and Slice 05.
+- Assumptions: deterministic stack-backed harnesses are the repo-local default for repeatable validation, while live `.env` remains available for manual operational checks when needed.
+- Next step: keep this plan as the completed hard-harness baseline and continue the remaining ops, audit, and harness expansion in Slice 04 and Slice 05.

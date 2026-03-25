@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+zero_oid="0000000000000000000000000000000000000000"
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  case "$remote_ref" in
+    refs/heads/main)
+      if [ "$local_ref" != "refs/heads/main" ]; then
+        printf '%s\n' "single-branch mode: only refs/heads/main may be pushed to origin/main." >&2
+        exit 1
+      fi
+      if [ "$local_oid" = "$zero_oid" ]; then
+        printf '%s\n' "single-branch mode: deleting origin/main is forbidden." >&2
+        exit 1
+      fi
+      ;;
+    refs/heads/*)
+      printf '%s\n' "single-branch mode: refusing push to '$remote_ref'; only origin/main is allowed." >&2
+      exit 1
+      ;;
+  esac
+done

@@ -183,11 +183,16 @@ The current status snapshot below is based on direct inspection of:
 | TDD-WEEK1-GATES | TDD | §12.1 | P0 | Week 1 应完成 codegen、最小主链路、允许目录策略、Ops/Evals blocking suite | partial | `Makefile codegen`<br>`test_api_flow.py`<br>`ops.page.ts`<br>`evals.page.ts`<br>`.github/workflows/nightly-regression.yml`<br>`tools/ci/run_eval_gate.sh` | `tests/test_eval_runner.py::test_blocking_suite_passes`<br>`tests/test_eval_runner.py::test_blocking_suite_returns_failure_result_when_search_run_fails`<br>`./tools/ci/run_eval_gate.sh` | single-shell alignment, context-pack discipline | Slice 05 | 现有 blocking eval 已进入 nightly CI gate，且 deterministic mock/stub 由测试 harness 与 workflow env 统一注入，但仍不是 PR required check，整体仓库形态与 TDD 仍有差距 |
 | TDD-HARD-RULES | TDD | Appx B | P0 | 不得绕过 `contracts/` 改 DTO；不得在 domain 引 infra；不得手改 generated | partial | `AGENTS.md` hard rules<br>`tools/ci/check_architecture.py`<br>`Makefile validate` with `check_generated_clean.py` | No policy-specific regression test | stronger CI policy checks | Slice 05 | 规则和部分 gate 在，覆盖仍可加硬 |
 
-## Existing Active Plan Mapping Snapshot
+## Execution Plan Mapping Snapshot
 
 | Plan | Current Mapping | Disposition |
 | --- | --- | --- |
-| `docs/EXEC-PLANS/active/bootstrap-plan.md` | Broadly overlaps `ADR-001`, `ADR-005`, `ADR-006`, `ADR-007`, `TDD-DAY0-GATES`, `TDD-WEEK1-GATES` | Keep as historical bootstrap note only; not acceptable as current execution source because it lacks row-level scope and evidence |
-| `docs/EXEC-PLANS/active/dependency-governance-plan.md` | Mostly maps to `ADR-001`, `ADR-006`, `TDD-ARCH-DOMAIN-BOUNDARY`, `TDD-HARD-RULES`, parts of `TDD-DAY0-GATES` | Retain as thematic backlog; later split across Slice 02 and Slice 05 using explicit IDs |
-| `docs/EXEC-PLANS/active/ci-pipeline-hardening-plan.md` | Maps to `ADR-008`, `TDD-ERR-EVAL`, `TDD-DAY0-GATES`, and `TDD-WEEK1-GATES` | Current execution source for CI hardening, diagnostics capture, and post-merge workflow layout |
-| `docs/EXEC-PLANS/active/hard-harness-plan.md` | Mostly maps to `ADR-006`, `ADR-007`, `TDD-ERR-*`, `AC-02`, `AC-03`, `AC-04`, `AC-06`, `AC-07`, `TDD-HARD-RULES` | Retain as thematic backlog; later split across Slice 04 and Slice 05 using explicit IDs |
+| `docs/EXEC-PLANS/completed/bootstrap-plan.md` | Broadly overlaps `ADR-001`, `ADR-005`, `ADR-006`, `ADR-007`, `TDD-DAY0-GATES`, `TDD-WEEK1-GATES` | Completed historical bootstrap note; successor execution now lives in Slice 02-05 |
+| `docs/EXEC-PLANS/completed/dependency-governance-plan.md` | Mostly maps to `ADR-001`, `ADR-006`, `TDD-ARCH-DOMAIN-BOUNDARY`, `TDD-HARD-RULES`, parts of `TDD-DAY0-GATES` | Completed thematic dependency hardening baseline; remaining functional work continues in Slice 02 and Slice 05 |
+| `docs/EXEC-PLANS/completed/ci-pipeline-hardening-plan.md` | Maps to `ADR-008`, `TDD-ERR-EVAL`, `TDD-DAY0-GATES`, and `TDD-WEEK1-GATES` | Completed CI hardening slice; remaining harness and eval capability work continues in Slice 05 |
+| `docs/EXEC-PLANS/completed/hard-harness-plan.md` | Mostly maps to `ADR-006`, `ADR-007`, `TDD-ERR-*`, `AC-02`, `AC-03`, `AC-04`, `AC-06`, `AC-07`, `TDD-HARD-RULES` | Completed hard-harness baseline; remaining product-facing ops, audit, and harness work continues in Slice 04 and Slice 05 |
+| `docs/EXEC-PLANS/completed/mvp-slice-01-governance-plan.md` | Governance slice for traceability, execution-plan contract, and slice partitioning | Completed governance slice; successor execution sources are Slice 02-05 |
+| `docs/EXEC-PLANS/active/mvp-slice-02-jd-kw-searchrun-plan.md` | Exact row set already tagged `Slice 02` in this document | Current execution source for JD / KW / SearchRun mainline closure |
+| `docs/EXEC-PLANS/active/mvp-slice-03-list-detail-verdict-plan.md` | Exact row set already tagged `Slice 03` in this document | Current execution source for list / detail / verdict and AI degrade work |
+| `docs/EXEC-PLANS/active/mvp-slice-04-export-audit-ops-plan.md` | Exact row set already tagged `Slice 04` in this document | Current execution source for export / audit / ops and unified masking |
+| `docs/EXEC-PLANS/active/mvp-slice-05-harness-evals-gates-plan.md` | Exact row set already tagged `Slice 05` in this document | Current execution source for harness / evals / gates and remaining architecture hardening |

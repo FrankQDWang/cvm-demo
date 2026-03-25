@@ -29,3 +29,10 @@ Implement the long-term dependency governance and boundary hardening plan across
 - `pnpm run check:deps:ts` passes
 - `pnpm run check:unused:ts` passes
 - `make validate`, `make test`, and `make eval-critical` pass
+
+## Close-Out
+
+- Validated: `PlatformService` remains on application-owned DTOs, ports, and runtime config; `make validate` covers architecture, Tach, Dependency Cruiser, Knip, and generated-clean gates; `make test` and `make eval-critical` pass; `.github/workflows/validate.yml` now contains an explicit `eval-critical` job alongside the existing split CI gates.
+- Not completed: no additional feature delivery is bundled here; remaining business behavior gaps are transferred to Slice 02 and Slice 05.
+- Assumptions: `make validate` remains the single developer-facing aggregate gate, while CI keeps split jobs for faster diagnostics and parallelism.
+- Next step: treat this plan as a completed thematic dependency hardening reference and continue remaining work through Slice 02 and Slice 05.

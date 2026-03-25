@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+branch_name="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+
+if [ "$branch_name" != "main" ]; then
+  printf '%s\n' "single-branch mode: commits are only allowed on 'main'. Current HEAD is '${branch_name:-detached}'." >&2
+  exit 1
+fi
