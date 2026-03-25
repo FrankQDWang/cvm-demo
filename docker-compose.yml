@@ -124,9 +124,7 @@ services:
       CVM_EXPORTS_DIR: /app/var/exports
       CVM_CORS_ORIGINS: http://localhost:${CVM_USER_WEB_PORT:-4200},http://127.0.0.1:${CVM_USER_WEB_PORT:-4200},http://localhost:${CVM_OPS_WEB_PORT:-4201},http://127.0.0.1:${CVM_OPS_WEB_PORT:-4201},http://localhost:${CVM_EVALS_WEB_PORT:-4202},http://127.0.0.1:${CVM_EVALS_WEB_PORT:-4202}
     command:
-      - uv
-      - run
-      - uvicorn
+      - /app/.venv/bin/uvicorn
       - cvm_platform.main:app
       - --factory
       - --app-dir
@@ -177,9 +175,7 @@ services:
       CVM_CTS_TENANT_SECRET: ${CVM_CTS_TENANT_SECRET:-}
       CVM_CTS_TIMEOUT_SECONDS: ${CVM_CTS_TIMEOUT_SECONDS:-20}
     command:
-      - uv
-      - run
-      - python
+      - /app/.venv/bin/python
       - -m
       - cvm_worker.main
 
