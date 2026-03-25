@@ -17,9 +17,6 @@ jobs:
       - docker-cvm-demo
     env:
       UV_PYTHON: "3.12"
-      CVM_TEST_API_BASE_URL: "http://host.docker.internal:8010"
-      CVM_TEMPORAL_HOST: "host.docker.internal:7233"
-      CVM_OPENSEARCH_BASE_URL: "http://host.docker.internal:9200"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,3 +49,25 @@ jobs:
         run: make validate
       - name: Test
         run: make test
+      - name: Bring up stack
+        env:
+          CVM_POSTGRES_PORT: "55432"
+          CVM_API_PORT: "18010"
+          CVM_TEMPORAL_PORT: "17233"
+          CVM_TEMPORAL_UI_PORT: "18080"
+          CVM_OPENSEARCH_PORT: "19200"
+        run: docker compose up -d --build --wait --wait-timeout 240 --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
+      - name: Test Stack
+        env:
+          CVM_POSTGRES_PORT: "55432"
+          CVM_API_PORT: "18010"
+          CVM_TEMPORAL_PORT: "17233"
+          CVM_TEMPORAL_UI_PORT: "18080"
+          CVM_OPENSEARCH_PORT: "19200"
+          CVM_TEST_API_BASE_URL: "http://host.docker.internal:18010"
+          CVM_TEMPORAL_HOST: "host.docker.internal:17233"
+          CVM_OPENSEARCH_BASE_URL: "http://host.docker.internal:19200"
+        run: make test-stack
+      - name: Tear down stack
+        if: always()
+        run: docker compose down --remove-orphans

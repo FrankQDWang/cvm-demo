@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from cvm_testkit import unique_idempotency_key, wait_for_search_run, wait_for_temporal_diagnostic
+
+
+pytestmark = pytest.mark.stack
 
 
 def read_json(response: httpx.Response) -> dict:

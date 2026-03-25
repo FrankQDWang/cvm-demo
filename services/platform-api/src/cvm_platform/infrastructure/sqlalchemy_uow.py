@@ -50,8 +50,18 @@ def _to_record(record_type: type[RecordT], model: object) -> RecordT:
     return record_type(**{field.name: getattr(model, field.name) for field in fields(record_type)})
 
 
+def _pending_model(session: Session, model_type: type[ModelT], record_id: object) -> ModelT | None:
+    for pending in session.new:
+        if isinstance(pending, model_type) and getattr(pending, "id", object()) == record_id:
+            return pending
+    return None
+
+
 def _save_record(session: Session, model_type: type[ModelT], record: RecordT) -> RecordT:
-    model = session.get(model_type, getattr(record, "id"))
+    record_id = getattr(record, "id")
+    model = _pending_model(session, model_type, record_id)
+    if model is None:
+        model = session.get(model_type, record_id)
     values = _record_values(record)
     if model is None:
         model = model_type(**values)

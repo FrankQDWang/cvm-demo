@@ -9,7 +9,7 @@ SHELL := /bin/zsh
 # - make down: 停止并清理当前 compose 资源
 # - make status: 查看容器状态
 # - make dev-api / dev-worker / dev-web-*: 宿主机开发模式启动
-.PHONY: codegen validate test eval-critical dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke down status urls
+.PHONY: codegen validate test test-stack eval-critical dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke down status urls
 
 # 根据 contract 重新生成 generated 代码
 codegen:
@@ -33,9 +33,13 @@ validate:
 
 # 后端测试
 test:
+	uv run pytest -m 'not stack' --cov --cov-report=term-missing
+
+# 栈集成测试：显式依赖 compose 栈
+test-stack:
 	@set -a; source .env 2>/dev/null || true; set +a; \
 	uv run python tools/ci/check_local_stack_ready.py; \
-	uv run pytest
+	uv run pytest -m stack
 
 # 最小 blocking eval 套件
 eval-critical:
