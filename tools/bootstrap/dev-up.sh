@@ -38,20 +38,22 @@ run_with_runtime() {
   fi
 }
 
-wait_for_container() {
-  local container_name="$1"
+wait_for_service() {
+  local service_name="$1"
   local expected="${2:-healthy}"
+  local container_id=""
   local current_state=""
   local attempt=0
   while (( attempt < 60 )); do
-    current_state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_name" 2>/dev/null || true)"
+    container_id="$(docker compose ps -q "$service_name" 2>/dev/null || true)"
+    current_state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
     if [[ "$current_state" == "$expected" ]]; then
       return 0
     fi
     sleep 2
     (( attempt += 1 ))
   done
-  echo "container $container_name did not reach $expected, last=$current_state" >&2
+  echo "service $service_name did not reach $expected, last=$current_state" >&2
   return 1
 }
 
@@ -89,8 +91,8 @@ run_with_runtime pnpm install
 run_with_runtime make codegen
 
 docker compose up -d
-wait_for_container cvm-postgres healthy
-wait_for_container cvm-temporal healthy
+wait_for_service postgres healthy
+wait_for_service temporal healthy
 
 ensure_running api "${runner[@]}" uv run uvicorn cvm_platform.main:app --factory --app-dir services/platform-api/src --host 0.0.0.0 --port "$api_port"
 ensure_running worker "${runner[@]}" uv run python -m cvm_worker.main

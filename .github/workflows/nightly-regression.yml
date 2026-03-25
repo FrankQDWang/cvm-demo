@@ -1,0 +1,54 @@
+name: nightly-regression
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-regression
+  cancel-in-progress: false
+
+jobs:
+  nightly-regression:
+    timeout-minutes: 60
+    runs-on:
+      - self-hosted
+      - Linux
+      - ARM64
+      - docker-cvm-demo
+    env:
+      UV_PYTHON: "3.12"
+      CVM_TEST_API_BASE_URL: "http://127.0.0.1:8010"
+      CVM_TEMPORAL_HOST: "127.0.0.1:7233"
+      CVM_OPENSEARCH_BASE_URL: "http://127.0.0.1:9200"
+      CVM_TEMPORAL_UI_BASE_URL: "http://127.0.0.1:8080"
+      CVM_RESUME_SOURCE_MODE: "mock"
+      CVM_LLM_MODE: "stub"
+      CVM_EXTERNAL_STACK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-ci-env
+        with:
+          python-version: "3.12"
+      - name: Bring up stack
+        run: docker compose up -d --build --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
+      - name: Blocking eval gate
+        run: ./tools/ci/run_eval_gate.sh
+      - name: Temporal visibility smoke
+        run: make temporal-visibility-smoke
+      - name: Collect nightly diagnostics
+        if: failure()
+        run: ./tools/ci/collect_compose_diagnostics.sh .artifacts/nightly-regression
+      - name: Upload nightly diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-regression-diagnostics-${{ github.run_id }}
+          path: .artifacts/nightly-regression
+      - name: Tear down stack
+        if: always()
+        run: docker compose down --remove-orphans

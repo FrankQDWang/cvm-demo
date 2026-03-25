@@ -1,0 +1,10 @@
+* @frankqdwang
+
+/contracts/ @frankqdwang
+/services/platform-api/src/cvm_platform/api/ @frankqdwang
+/services/platform-api/src/cvm_platform/infrastructure/ @frankqdwang
+/tools/ci/ @frankqdwang
+/.github/actions/ @frankqdwang
+/.github/workflows/ @frankqdwang
+/pyproject.toml @frankqdwang
+/tsconfig*.json @frankqdwang

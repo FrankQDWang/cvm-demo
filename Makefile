@@ -9,39 +9,69 @@ SHELL := /bin/zsh
 # - make down: 停止并清理当前 compose 资源
 # - make status: 查看容器状态
 # - make dev-api / dev-worker / dev-web-*: 宿主机开发模式启动
-.PHONY: codegen validate test eval-critical dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke down status urls
+.PHONY: codegen validate validate-static validate-contracts test test-stack test-stack-run eval-critical eval-critical-run verify-images dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
 
 # 根据 contract 重新生成 generated 代码
 codegen:
 	uv run python tools/codegen/generate_all.py
 
-# 本地机械校验：文档、contract、generated、架构规则、前端构建
-validate:
-	uv run python tools/ci/check_links.py
+# 本地硬门入口：静态、契约、确定性测试
+validate: validate-static validate-contracts test
+
+# 静态门：类型、lint、架构、逃逸口、前端编译
+validate-static:
 	uv run python tools/ci/check_forbidden_runtime_artifacts.py
-	uv run python tools/ci/check_contracts.py
-	$(MAKE) codegen
-	uv run python tools/ci/check_generated_clean.py
+	uv run ruff check
+	uv run basedpyright --level error
 	uv run python tools/ci/check_architecture.py
 	uv run tach check --dependencies
 	uv run tach check-external
+	uv run semgrep --config semgrep.yml --error
+	mise exec -- pnpm run lint:ts
 	mise exec -- pnpm run check:deps:ts
 	mise exec -- pnpm run check:unused:ts
 	mise exec -- pnpm --dir apps/web-user run build
 	mise exec -- pnpm --dir apps/web-ops run build
 	mise exec -- pnpm --dir apps/web-evals run build
 
-# 后端测试
-test:
-	@set -a; source .env 2>/dev/null || true; set +a; \
-	uv run python tools/ci/check_local_stack_ready.py; \
-	uv run pytest
+# 契约门：schema、codegen、generated/docs clean
+validate-contracts:
+	uv run python tools/ci/check_links.py
+	uv run python tools/ci/check_contracts.py
+	$(MAKE) codegen
+	uv run python tools/ci/check_generated_clean.py
 
-# 最小 blocking eval 套件
+# 确定性测试：不依赖本地 compose 栈
+test:
+	uv run pytest -m 'not stack' --cov --cov-report=term-missing
+
+# 栈集成测试：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
+test-stack:
+	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
+		$(MAKE) --no-print-directory test-stack-run; \
+	else \
+		./tools/ci/with_deterministic_stack.sh $(MAKE) --no-print-directory test-stack-run; \
+	fi
+
+test-stack-run:
+	uv run python tools/ci/check_local_stack_ready.py
+	uv run pytest -m stack
+
+# 最小 blocking eval 套件：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 eval-critical:
-	@set -a; source .env 2>/dev/null || true; set +a; \
-	uv run python tools/ci/check_local_stack_ready.py; \
+	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
+		$(MAKE) --no-print-directory eval-critical-run; \
+	else \
+		./tools/ci/with_deterministic_stack.sh $(MAKE) --no-print-directory eval-critical-run; \
+	fi
+
+eval-critical-run:
+	uv run python tools/ci/check_local_stack_ready.py
 	uv run python -m cvm_eval_runner.cli --suite blocking
+
+# 运行时 Docker 制品验证：确保五个镜像都能从当前工作树成功构建
+verify-images:
+	docker compose build api worker web-user web-ops web-evals
 
 # 宿主机启动 API，读取 .env 端口配置
 dev-api:
@@ -103,10 +133,16 @@ rebuild-temporal-stack:
 	docker compose up -d --force-recreate --remove-orphans opensearch temporal temporal-ui temporal-admin-tools
 	@$(MAKE) --no-print-directory urls
 
-# 做一次本地 Temporal execution/visibility/UI 专项验收
+# 做一次本地 Temporal execution/visibility/UI 专项验收：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 temporal-visibility-smoke:
-	@set -a; source .env 2>/dev/null || true; set +a; \
-	uv run python tools/ci/check_local_stack_ready.py; \
+	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
+		$(MAKE) --no-print-directory temporal-visibility-smoke-run; \
+	else \
+		./tools/ci/with_deterministic_stack.sh $(MAKE) --no-print-directory temporal-visibility-smoke-run; \
+	fi
+
+temporal-visibility-smoke-run:
+	uv run python tools/ci/check_local_stack_ready.py
 	uv run python tools/smoke/temporal_visibility_smoke.py
 
 # 停止完整本地栈
