@@ -1,6 +1,6 @@
 # Requirement Traceability
 
-This document is the execution-facing bridge between the normative PDFs and repository work. The normative sources remain [prd.pdf](/Users/frankqdwang/Agents/cvm-demo/prd.pdf) and [TDD.pdf](/Users/frankqdwang/Agents/cvm-demo/TDD.pdf); this file is the queryable markdown source that later slices must update.
+This document is the execution-facing bridge between the normative PDFs and repository work. The normative sources remain [prd.pdf](../../prd.pdf) and [TDD.pdf](../../TDD.pdf); this file is the queryable markdown source that later slices must update.
 
 ## Rules
 

@@ -1,6 +1,6 @@
 # MVP Slice Template
 
-Use this template for every non-trivial MVP slice. A slice is not done until every in-scope `Source Doc + Source ID` row in [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md) has explicit status and evidence.
+Use this template for every non-trivial MVP slice. A slice is not done until every in-scope `Source Doc + Source ID` row in [Requirement Traceability](../../PRODUCT/requirement-traceability.md) has explicit status and evidence.
 
 ## Goal
 
@@ -13,7 +13,7 @@ State the user-facing or governance outcome in one paragraph. Do not describe ta
 
 Rules:
 
-- Only reference IDs that already exist in [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md).
+- Only reference IDs that already exist in [Requirement Traceability](../../PRODUCT/requirement-traceability.md).
 - If `AC-01` exists in both PRD and TDD, spell it as `PRD AC-01` or `TDD AC-01`.
 - If a row is only partially addressed, keep it in scope and define the exact partial target.
 

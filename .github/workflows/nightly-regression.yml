@@ -22,10 +22,16 @@ jobs:
       - docker-cvm-demo
     env:
       UV_PYTHON: "3.12"
-      CVM_TEST_API_BASE_URL: "http://127.0.0.1:8010"
-      CVM_TEMPORAL_HOST: "127.0.0.1:7233"
-      CVM_OPENSEARCH_BASE_URL: "http://127.0.0.1:9200"
-      CVM_TEMPORAL_UI_BASE_URL: "http://127.0.0.1:8080"
+      COMPOSE_PROJECT_NAME: cvm-nightly-${{ github.run_id }}
+      CVM_POSTGRES_PORT: "25432"
+      CVM_API_PORT: "28010"
+      CVM_TEMPORAL_PORT: "27233"
+      CVM_TEMPORAL_UI_PORT: "28080"
+      CVM_OPENSEARCH_PORT: "29200"
+      CVM_TEST_API_BASE_URL: "http://127.0.0.1:28010"
+      CVM_TEMPORAL_HOST: "127.0.0.1:27233"
+      CVM_OPENSEARCH_BASE_URL: "http://127.0.0.1:29200"
+      CVM_TEMPORAL_UI_BASE_URL: "http://127.0.0.1:28080"
       CVM_RESUME_SOURCE_MODE: "mock"
       CVM_LLM_MODE: "stub"
       CVM_EXTERNAL_STACK: "1"

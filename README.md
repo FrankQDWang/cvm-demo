@@ -82,5 +82,5 @@ make down
 ## References
 
 - [OpenAI Harness Engineering](https://openai.com/index/harness-engineering/)
-- [`prd.pdf`](/Users/frankqdwang/Documents/工作/cv-match/prd.pdf)
-- [`TDD.pdf`](/Users/frankqdwang/Documents/工作/cv-match/TDD.pdf)
+- [`prd.pdf`](prd.pdf)
+- [`TDD.pdf`](TDD.pdf)

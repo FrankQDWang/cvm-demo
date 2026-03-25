@@ -15,7 +15,7 @@ The repository exposes one clear blocking workflow for pull requests, one explic
 
 Rules:
 
-- Only reference IDs that already exist in [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md).
+- Only reference IDs that already exist in [Requirement Traceability](../../PRODUCT/requirement-traceability.md).
 - If a row is only partially addressed, keep it in scope and define the exact partial target.
 
 ## Explicitly Out of Scope
@@ -47,7 +47,7 @@ Rules:
 ## Preconditions and Dependencies
 
 - Required repo state: existing `validate` workflow, `make validate`, `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke` already exist.
-- Required contracts/docs: [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md), [Docs Index](/Users/frankqdwang/Agents/cvm-demo/docs/00-INDEX.md), and the existing governance plans remain the source of truth.
+- Required contracts/docs: [Requirement Traceability](../../PRODUCT/requirement-traceability.md), [Docs Index](../../00-INDEX.md), and the existing governance plans remain the source of truth.
 - Required local stack or external services: Docker must be available for stack-backed validation and runtime image verification; GitHub Actions uses the existing `self-hosted`, `Linux`, `ARM64`, `docker-cvm-demo` runner pool.
 - Blocking unknowns: none; `main` is the default branch and remains the post-merge trigger for runtime image verification.
 

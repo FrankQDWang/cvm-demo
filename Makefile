@@ -22,7 +22,7 @@ validate: validate-static validate-contracts test
 validate-static:
 	uv run python tools/ci/check_forbidden_runtime_artifacts.py
 	uv run ruff check
-	uv run basedpyright --level error
+	uv run python tools/ci/run_basedpyright.py
 	uv run python tools/ci/check_architecture.py
 	uv run tach check --dependencies
 	uv run tach check-external

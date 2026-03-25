@@ -35,13 +35,13 @@ Turn PRD/TDD from narrative PDF inputs into repository-native execution controls
 
 ## Preconditions and Dependencies
 
-- Normative source documents remain [prd.pdf](/Users/frankqdwang/Agents/cvm-demo/prd.pdf) and [TDD.pdf](/Users/frankqdwang/Agents/cvm-demo/TDD.pdf).
+- Normative source documents remain [prd.pdf](../../../prd.pdf) and [TDD.pdf](../../../TDD.pdf).
 - The execution source is repository markdown, not chat history.
 - The current worktree may already contain in-flight code changes; Slice 01 audits them but does not bless them as complete without evidence.
 
 ## Implementation Steps
 
-1. Create [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md) with one queryable row identity per `Source Doc + Source ID`.
+1. Create [Requirement Traceability](../../PRODUCT/requirement-traceability.md) with one queryable row identity per `Source Doc + Source ID`.
 2. Define status vocabulary, evidence rules, and synthetic ID namespaces for unnumbered PRD/TDD clauses.
 3. Audit the current repository conservatively:
    - `validated` only when a concrete test or check already proves the behavior
@@ -50,10 +50,10 @@ Turn PRD/TDD from narrative PDF inputs into repository-native execution controls
    - `missing` when no direct evidence exists
    - `deferred` or `conflict` only with an explicit note
 4. Map current active execution plans to requirement IDs and assign disposition:
-   - [bootstrap-plan.md](/Users/frankqdwang/Agents/cvm-demo/docs/EXEC-PLANS/active/bootstrap-plan.md): keep as historical bootstrap note; not sufficient as an execution source because it has no row-level traceability.
-   - [dependency-governance-plan.md](/Users/frankqdwang/Agents/cvm-demo/docs/EXEC-PLANS/active/dependency-governance-plan.md): retain as thematic reference; split across Slice 02 and Slice 05 once mapped to concrete IDs.
-   - [hard-harness-plan.md](/Users/frankqdwang/Agents/cvm-demo/docs/EXEC-PLANS/active/hard-harness-plan.md): retain as thematic reference; split across Slice 04 and Slice 05 once mapped to concrete IDs.
-5. Install [MVP Slice Template](/Users/frankqdwang/Agents/cvm-demo/docs/EXEC-PLANS/templates/mvp-slice-template.md) as the only allowed template for future non-trivial slices.
+   - [bootstrap-plan.md](bootstrap-plan.md): keep as historical bootstrap note; not sufficient as an execution source because it has no row-level traceability.
+   - [dependency-governance-plan.md](dependency-governance-plan.md): retain as thematic reference; split across Slice 02 and Slice 05 once mapped to concrete IDs.
+   - [hard-harness-plan.md](hard-harness-plan.md): retain as thematic reference; split across Slice 04 and Slice 05 once mapped to concrete IDs.
+5. Install [MVP Slice Template](../templates/mvp-slice-template.md) as the only allowed template for future non-trivial slices.
 6. Publish the default next-slice sequence:
    - Slice 02: `JD / KW / SearchRun` mainline
    - Slice 03: `List / Detail / Verdict`
@@ -62,10 +62,10 @@ Turn PRD/TDD from narrative PDF inputs into repository-native execution controls
 
 ## Acceptance Evidence
 
-- [Requirement Traceability](/Users/frankqdwang/Agents/cvm-demo/docs/PRODUCT/requirement-traceability.md) exists and covers the entire Slice 01 in-scope ID set.
-- [MVP Slice Template](/Users/frankqdwang/Agents/cvm-demo/docs/EXEC-PLANS/templates/mvp-slice-template.md) exists and encodes mandatory sections for later slices.
+- [Requirement Traceability](../../PRODUCT/requirement-traceability.md) exists and covers the entire Slice 01 in-scope ID set.
+- [MVP Slice Template](../templates/mvp-slice-template.md) exists and encodes mandatory sections for later slices.
 - This plan explicitly names allowed write paths, forbidden write paths, and existing-plan dispositions.
-- [docs/00-INDEX.md](/Users/frankqdwang/Agents/cvm-demo/docs/00-INDEX.md) exposes the new governance artifacts.
+- [docs/00-INDEX.md](../../00-INDEX.md) exposes the new governance artifacts.
 - Link validation passes for the new docs.
 
 ## Failure Standard
