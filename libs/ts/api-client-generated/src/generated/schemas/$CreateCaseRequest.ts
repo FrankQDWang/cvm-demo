@@ -7,10 +7,12 @@ export const $CreateCaseRequest = {
         title: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         ownerTeamId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

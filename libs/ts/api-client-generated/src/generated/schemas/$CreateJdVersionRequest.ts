@@ -7,10 +7,12 @@ export const $CreateJdVersionRequest = {
         rawText: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         source: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

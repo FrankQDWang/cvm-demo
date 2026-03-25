@@ -3,25 +3,7 @@ from __future__ import annotations
 import httpx
 
 from cvm_testkit import unique_idempotency_key, wait_for_search_run, wait_for_temporal_diagnostic
-
-
-def read_json(response: httpx.Response) -> dict:
-    response.raise_for_status()
-    return response.json()
-
-
-def bootstrap_case_flow(client: httpx.Client) -> tuple[dict, dict, dict]:
-    case_suffix = unique_idempotency_key("case")
-    case = read_json(client.post("/api/v1/cases", json={"title": f"AI Native Recruiter {case_suffix}", "ownerTeamId": "team-cn"}))
-    version = read_json(client.post(
-        f"/api/v1/cases/{case['caseId']}/jd-versions",
-        json={"rawText": "Need Python FastAPI Angular Temporal search experience", "source": "manual"},
-    ))
-    draft = read_json(client.post(
-        f"/api/v1/cases/{case['caseId']}/keyword-draft-jobs",
-        json={"jdVersionId": version["jdVersionId"], "modelVersion": "gpt-5.4-mini", "promptVersion": "draft-v1"},
-    ))
-    return case, version, draft
+from tests.support.flow import bootstrap_case_flow, read_json
 
 
 def test_mainline_flow(client: httpx.Client) -> None:
@@ -105,31 +87,17 @@ def test_zero_results_and_parameter_anomaly_are_distinct(client: httpx.Client) -
     assert zero_pages["snapshots"][0]["errorCode"] is None
 
     anomaly_case, _, anomaly_draft = bootstrap_case_flow(client)
-    anomaly_plan = read_json(client.post(
+    anomaly_plan = client.post(
         f"/api/v1/condition-plans/{anomaly_draft['planId']}:confirm",
         json={
             **anomaly_draft["draft"],
             "structuredFilters": {"page": 1, "pageSize": 0},
             "confirmedBy": "consultant-1",
         },
-    ))
-    anomaly_run = read_json(client.post(
-        "/api/v1/search-runs",
-        json={
-            "caseId": anomaly_case["caseId"],
-            "planId": anomaly_plan["planId"],
-            "pageBudget": 1,
-            "idempotencyKey": unique_idempotency_key("anomaly-run"),
-        },
-    ))
-    anomaly_status = wait_for_search_run(client, anomaly_run["runId"])
-    anomaly_diagnostic = wait_for_temporal_diagnostic(client, anomaly_run["runId"])
-    anomaly_pages = read_json(client.get(f"/api/v1/search-runs/{anomaly_run['runId']}/pages"))
+    )
 
-    assert anomaly_status["status"] == "failed"
-    assert anomaly_diagnostic["temporalExecutionFound"] is True
-    assert anomaly_diagnostic["visibilityIndexed"] is True
-    assert anomaly_pages["snapshots"][0]["errorCode"] == "CTS_PARAM_ANOMALY"
+    assert anomaly_plan.status_code == 400
+    assert anomaly_plan.json()["code"] == "INVALID_REQUEST"
 
 
 def test_sensitive_export_is_blocked_in_local_mode(client: httpx.Client) -> None:

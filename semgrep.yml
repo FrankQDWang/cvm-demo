@@ -1,0 +1,57 @@
+rules:
+  - id: cvm-python-no-bare-exception
+    languages: [python]
+    severity: ERROR
+    message: Use typed domain or dependency errors instead of broad `except Exception`.
+    pattern-regex: 'except Exception(?:\\s+as\\s+\\w+)?:'
+    paths:
+      include:
+        - "**/services/platform-api/src/cvm_platform/api/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/application/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/infrastructure/**/*.py"
+      exclude:
+        - "**/services/platform-api/src/cvm_platform/infrastructure/db.py"
+
+  - id: cvm-python-no-runtimeerror-boundary
+    languages: [python]
+    severity: ERROR
+    message: Raise typed contract-aware errors instead of bare RuntimeError in platform boundaries.
+    pattern: raise RuntimeError(...)
+    paths:
+      include:
+        - "**/services/platform-api/src/cvm_platform/api/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/application/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/infrastructure/**/*.py"
+      exclude:
+        - "**/services/platform-api/src/cvm_platform/infrastructure/db.py"
+
+  - id: cvm-python-no-dict-any-boundary
+    languages: [python]
+    severity: ERROR
+    message: Do not move raw `dict[str, Any]` payloads across platform boundaries.
+    pattern-regex: 'dict\\[str,\\s*Any\\]'
+    paths:
+      include:
+        - "**/services/platform-api/src/cvm_platform/api/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/application/**/*.py"
+        - "**/services/platform-api/src/cvm_platform/infrastructure/**/*.py"
+
+  - id: cvm-ts-no-ts-comment
+    languages: [typescript]
+    severity: ERROR
+    message: Do not suppress TypeScript diagnostics with ts-ignore / ts-expect-error.
+    pattern-regex: '@ts-(ignore|expect-error)'
+    paths:
+      include:
+        - "**/apps/**/*.ts"
+        - "**/libs/ts/platform-api-client/src/**/*.ts"
+
+  - id: cvm-ts-no-direct-fetch
+    languages: [typescript]
+    severity: ERROR
+    message: Route HTTP access through PlatformApiService / generated clients.
+    pattern: fetch(...)
+    paths:
+      include:
+        - "**/apps/**/*.ts"
+        - "**/libs/ts/platform-api-client/src/**/*.ts"

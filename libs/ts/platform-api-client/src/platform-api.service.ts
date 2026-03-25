@@ -2,9 +2,21 @@ import { Injectable } from '@angular/core';
 
 import {
   CreateExportRequest,
-  DefaultService,
-  OpenAPI,
+  type CandidateDetailResponse,
   type ConditionPlanDraft,
+  type ConfirmConditionPlanResponse,
+  type CreateCaseResponse,
+  type CreateEvalRunResponse,
+  type CreateExportResponse,
+  type CreateJdVersionResponse,
+  type CreateKeywordDraftJobResponse,
+  type CreateSearchRunResponse,
+  DefaultService,
+  type OpsSummaryResponse,
+  OpenAPI,
+  type SearchRunPagesResponse,
+  type SearchRunStatusResponse,
+  type TemporalSearchRunDiagnosticResponse,
   Verdict,
 } from '@cvm/api-client-generated';
 
@@ -29,15 +41,15 @@ export class PlatformApiService {
     configureOpenApiBase();
   }
 
-  createCase(title: string, ownerTeamId: string) {
+  createCase(title: string, ownerTeamId: string): Promise<CreateCaseResponse> {
     return DefaultService.createCase({ requestBody: { title, ownerTeamId } });
   }
 
-  createJdVersion(caseId: string, rawText: string, source: string) {
+  createJdVersion(caseId: string, rawText: string, source: string): Promise<CreateJdVersionResponse> {
     return DefaultService.createJdVersion({ caseId, requestBody: { rawText, source } });
   }
 
-  createKeywordDraft(caseId: string, jdVersionId: string) {
+  createKeywordDraft(caseId: string, jdVersionId: string): Promise<CreateKeywordDraftJobResponse> {
     return DefaultService.createKeywordDraftJob({
       caseId,
       requestBody: {
@@ -48,33 +60,37 @@ export class PlatformApiService {
     });
   }
 
-  confirmPlan(planId: string, draft: ConditionPlanDraft, confirmedBy: string) {
+  confirmPlan(
+    planId: string,
+    draft: ConditionPlanDraft,
+    confirmedBy: string,
+  ): Promise<ConfirmConditionPlanResponse> {
     return DefaultService.confirmConditionPlan({
       planId,
       requestBody: { ...draft, confirmedBy },
     });
   }
 
-  createSearchRun(caseId: string, planId: string, pageBudget: number) {
+  createSearchRun(caseId: string, planId: string, pageBudget: number): Promise<CreateSearchRunResponse> {
     return DefaultService.createSearchRun({
       requestBody: {
         caseId,
         planId,
         pageBudget,
-        idempotencyKey: `web-${Date.now()}`,
+        idempotencyKey: `web-${String(Date.now())}`,
       },
     });
   }
 
-  getSearchRun(runId: string) {
+  getSearchRun(runId: string): Promise<SearchRunStatusResponse> {
     return DefaultService.getSearchRun({ runId });
   }
 
-  getSearchRunPages(runId: string) {
+  getSearchRunPages(runId: string): Promise<SearchRunPagesResponse> {
     return DefaultService.getSearchRunPages({ runId });
   }
 
-  getCandidate(candidateId: string) {
+  getCandidate(candidateId: string): Promise<CandidateDetailResponse> {
     return DefaultService.getCaseCandidate({ candidateId });
   }
 
@@ -90,26 +106,26 @@ export class PlatformApiService {
     });
   }
 
-  createExport(caseId: string) {
+  createExport(caseId: string): Promise<CreateExportResponse> {
     return DefaultService.createExport({
       requestBody: {
         caseId,
         maskPolicy: CreateExportRequest.maskPolicy.MASKED,
         reason: 'weekly shortlist',
-        idempotencyKey: `export-${Date.now()}`,
+        idempotencyKey: `export-${String(Date.now())}`,
       },
     });
   }
 
-  getOpsSummary() {
+  getOpsSummary(): Promise<OpsSummaryResponse> {
     return DefaultService.getOpsSummary();
   }
 
-  getSearchRunTemporalDiagnostic(runId: string) {
+  getSearchRunTemporalDiagnostic(runId: string): Promise<TemporalSearchRunDiagnosticResponse> {
     return DefaultService.getSearchRunTemporalDiagnostic({ runId });
   }
 
-  createEvalRun() {
+  createEvalRun(): Promise<CreateEvalRunResponse> {
     return DefaultService.createEvalRun({
       requestBody: {
         suiteId: 'blocking',

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import cast
+
 from sqlalchemy.orm import Session
 
+from cvm_platform.application.ports import PlatformUnitOfWork
 from cvm_platform.application.runtime import PlatformRuntimeConfig
 from cvm_platform.application.service import PlatformService
 from cvm_platform.infrastructure.adapters import build_llm, build_resume_source
@@ -26,8 +29,9 @@ def build_runtime_config(settings: Settings) -> PlatformRuntimeConfig:
 
 def build_platform_service(session: Session, settings: Settings) -> PlatformService:
     runtime_config = build_runtime_config(settings)
+    uow = cast(PlatformUnitOfWork, cast(object, SqlAlchemyPlatformUnitOfWork(session)))
     return PlatformService(
-        uow=SqlAlchemyPlatformUnitOfWork(session),
+        uow=uow,
         runtime_config=runtime_config,
         llm=build_llm(settings),
         resume_source=build_resume_source(settings),

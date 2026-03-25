@@ -7,6 +7,7 @@ export const $CreateExportRequest = {
         caseId: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         maskPolicy: {
             type: 'Enum',
@@ -15,10 +16,12 @@ export const $CreateExportRequest = {
         reason: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         idempotencyKey: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

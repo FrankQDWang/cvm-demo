@@ -7,10 +7,12 @@ export const $EvidenceRef = {
         label: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
         excerpt: {
             type: 'string',
             isRequired: true,
+            minLength: 1,
         },
     },
 } as const;

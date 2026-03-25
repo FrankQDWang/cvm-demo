@@ -5,27 +5,15 @@
 export const $OpsSummaryResponse = {
     properties: {
         queue: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+            type: 'QueueSummary',
             isRequired: true,
         },
         failures: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+            type: 'FailureSummary',
             isRequired: true,
         },
         latency: {
-            type: 'dictionary',
-            contains: {
-                properties: {
-                },
-            },
+            type: 'LatencySummary',
             isRequired: true,
         },
         version: {

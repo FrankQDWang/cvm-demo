@@ -9,7 +9,7 @@ export type SearchRunPageSnapshot = {
     fetchedAt: string;
     candidates: Array<CandidateCard>;
     total: number;
-    errorCode?: string;
-    errorMessage?: string;
+    errorCode?: string | null;
+    errorMessage?: string | null;
 };
 

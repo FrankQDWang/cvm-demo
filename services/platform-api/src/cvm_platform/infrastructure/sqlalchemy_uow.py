@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -42,23 +42,19 @@ RecordT = TypeVar("RecordT")
 ModelT = TypeVar("ModelT")
 
 
-def _record_values(record: RecordT) -> dict[str, object]:
-    return {field.name: getattr(record, field.name) for field in fields(type(record))}
+def _record_values(record: object) -> dict[str, Any]:
+    return {field.name: getattr(record, field.name) for field in fields(cast(Any, type(record)))}
 
 
 def _to_record(record_type: type[RecordT], model: object) -> RecordT:
-    return record_type(**{field.name: getattr(model, field.name) for field in fields(record_type)})
+    values = {field.name: getattr(model, field.name) for field in fields(cast(Any, record_type))}
+    return record_type(**values)
 
 
-def _save_record(session: Session, model_type: type[ModelT], record: RecordT) -> RecordT:
-    model = session.get(model_type, getattr(record, "id"))
+def _save_record(session: Session, model_type: type[Any], record: RecordT) -> RecordT:
     values = _record_values(record)
-    if model is None:
-        model = model_type(**values)
-        session.add(model)
-    else:
-        for name, value in values.items():
-            setattr(model, name, value)
+    session.merge(model_type(**values))
+    session.flush()
     return record
 
 

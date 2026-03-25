@@ -12,12 +12,17 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "basedpyright>=1.34,<1.35",
   "datamodel-code-generator>=0.55,<0.56",
   "httpx>=0.28,<0.29",
+  "hypothesis>=6.142,<7",
+  "pre-commit>=4.3,<5",
   "pytest>=9,<10",
   "pytest-cov>=7,<8",
   "pyyaml>=6,<7",
   "ruff>=0.15,<0.16",
+  "schemathesis>=4.5,<5",
+  "semgrep>=1.119,<2",
   "tach>=0.34,<0.35",
 ]
 
@@ -40,6 +45,10 @@ members = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "--strict-markers"
+markers = [
+  "stack: requires the docker-compose-backed local stack",
+]
 pythonpath = [
   "services/platform-api/src",
   "services/temporal-worker/src",
@@ -53,6 +62,26 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.coverage.run]
+branch = true
+source = [
+  "services/platform-api/src/cvm_platform",
+  "services/temporal-worker/src/cvm_worker",
+  "services/eval-runner/src/cvm_eval_runner",
+  "libs/py/domain-kernel/src/cvm_domain_kernel",
+  "libs/py/testkit/src/cvm_testkit",
+]
+omit = [
+  "libs/py/contracts-generated/*",
+  "docs/_generated/*",
+  "tools/codegen/*",
+]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_empty = true
 
 [tool.tach]
 exclude = [

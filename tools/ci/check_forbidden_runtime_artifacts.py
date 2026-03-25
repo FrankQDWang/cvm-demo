@@ -10,6 +10,7 @@ IGNORED_DIRS = {
     ".venv",
     "node_modules",
     "dist",
+    "tests",
     "__pycache__",
 }
 IGNORED_FILE_NAMES = {

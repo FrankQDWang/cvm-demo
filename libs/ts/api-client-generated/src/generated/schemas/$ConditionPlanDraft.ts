@@ -8,6 +8,7 @@ export const $ConditionPlanDraft = {
             type: 'array',
             contains: {
                 type: 'string',
+                minLength: 1,
             },
             isRequired: true,
         },
@@ -15,6 +16,7 @@ export const $ConditionPlanDraft = {
             type: 'array',
             contains: {
                 type: 'string',
+                minLength: 1,
             },
             isRequired: true,
         },
@@ -22,6 +24,7 @@ export const $ConditionPlanDraft = {
             type: 'array',
             contains: {
                 type: 'string',
+                minLength: 1,
             },
             isRequired: true,
         },

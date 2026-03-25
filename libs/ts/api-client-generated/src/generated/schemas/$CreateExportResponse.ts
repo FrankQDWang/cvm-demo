@@ -14,6 +14,7 @@ export const $CreateExportResponse = {
         },
         filePath: {
             type: 'string',
+            isNullable: true,
         },
     },
 } as const;

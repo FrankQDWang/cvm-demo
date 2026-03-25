@@ -23,6 +23,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateCaseResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
   /api/v1/cases/{caseId}/jd-versions:
     post:
       operationId: createJdVersion
@@ -46,6 +48,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateJdVersionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/cases/{caseId}/keyword-draft-jobs:
     post:
       operationId: createKeywordDraftJob
@@ -69,6 +75,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateKeywordDraftJobResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/ExternalDependencyFailure"
+        "503":
+          $ref: "#/components/responses/TransientDependencyFailure"
   /api/v1/condition-plans/{planId}:confirm:
     post:
       operationId: confirmConditionPlan
@@ -92,6 +106,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConfirmConditionPlanResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/search-runs:
     post:
       operationId: createSearchRun
@@ -109,6 +127,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateSearchRunResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/TransientDependencyFailure"
   /api/v1/search-runs/{runId}:
     get:
       operationId: getSearchRun
@@ -126,6 +152,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchRunStatusResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/search-runs/{runId}/pages:
     get:
       operationId: getSearchRunPages
@@ -148,6 +176,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchRunPagesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/case-candidates/{candidateId}:
     get:
       operationId: getCaseCandidate
@@ -165,6 +197,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CandidateDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/case-candidates/{candidateId}/verdict:
     put:
       operationId: saveCandidateVerdict
@@ -188,6 +222,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SaveVerdictResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/v1/exports:
     post:
       operationId: createExport
@@ -205,6 +243,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateExportResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/ExternalDependencyFailure"
   /api/v1/ops/summary:
     get:
       operationId: getOpsSummary
@@ -233,6 +279,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemporalSearchRunDiagnosticResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/TransientDependencyFailure"
   /api/v1/evals/runs:
     post:
       operationId: createEvalRun
@@ -250,16 +300,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreateEvalRunResponse"
+        "400":
+          $ref: "#/components/responses/InvalidInput"
 components:
   schemas:
     CreateCaseRequest:
       type: object
+      additionalProperties: false
       required: [title, ownerTeamId]
       properties:
         title:
           type: string
+          minLength: 1
         ownerTeamId:
           type: string
+          minLength: 1
     CreateCaseResponse:
       type: object
       required: [caseId, status]
@@ -270,12 +325,15 @@ components:
           type: string
     CreateJdVersionRequest:
       type: object
+      additionalProperties: false
       required: [rawText, source]
       properties:
         rawText:
           type: string
+          minLength: 1
         source:
           type: string
+          minLength: 1
     CreateJdVersionResponse:
       type: object
       required: [jdVersionId, versionNo, status]
@@ -288,48 +346,69 @@ components:
           type: string
     EvidenceRef:
       type: object
+      additionalProperties: false
       required: [label, excerpt]
       properties:
         label:
           type: string
+          minLength: 1
         excerpt:
           type: string
+          minLength: 1
     StructuredFilters:
       type: object
-      additionalProperties: true
+      additionalProperties: false
+      required: [page, pageSize]
       properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
         location:
-          oneOf:
-            - type: string
-            - type: array
-              items:
-                type: string
+          type: array
+          items:
+            type: string
+            minLength: 1
         degree:
           type: integer
         schoolType:
           type: integer
         workExperienceRange:
           type: integer
-        page:
-          type: integer
-        pageSize:
-          type: integer
+        position:
+          type: string
+          minLength: 1
+        workContent:
+          type: string
+          minLength: 1
+        company:
+          type: string
+          minLength: 1
+        school:
+          type: string
+          minLength: 1
     ConditionPlanDraft:
       type: object
+      additionalProperties: false
       required: [mustTerms, shouldTerms, excludeTerms, structuredFilters, evidenceRefs]
       properties:
         mustTerms:
           type: array
           items:
             type: string
+            minLength: 1
         shouldTerms:
           type: array
           items:
             type: string
+            minLength: 1
         excludeTerms:
           type: array
           items:
             type: string
+            minLength: 1
         structuredFilters:
           $ref: "#/components/schemas/StructuredFilters"
         evidenceRefs:
@@ -338,14 +417,18 @@ components:
             $ref: "#/components/schemas/EvidenceRef"
     CreateKeywordDraftJobRequest:
       type: object
+      additionalProperties: false
       required: [jdVersionId, modelVersion, promptVersion]
       properties:
         jdVersionId:
           type: string
+          minLength: 1
         modelVersion:
           type: string
+          minLength: 1
         promptVersion:
           type: string
+          minLength: 1
     CreateKeywordDraftJobResponse:
       type: object
       required: [jobId, status, planId, draft]
@@ -359,15 +442,45 @@ components:
         draft:
           $ref: "#/components/schemas/ConditionPlanDraft"
     ConfirmConditionPlanRequest:
-      allOf:
-        - $ref: "#/components/schemas/ConditionPlanDraft"
-        - type: object
-          required: [confirmedBy]
-          properties:
-            confirmedBy:
-              type: string
+      type: object
+      additionalProperties: false
+      required:
+        [
+          mustTerms,
+          shouldTerms,
+          excludeTerms,
+          structuredFilters,
+          evidenceRefs,
+          confirmedBy,
+        ]
+      properties:
+        mustTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        shouldTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        excludeTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        structuredFilters:
+          $ref: "#/components/schemas/StructuredFilters"
+        evidenceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvidenceRef"
+        confirmedBy:
+          type: string
+          minLength: 1
     ConfirmConditionPlanResponse:
       type: object
+      additionalProperties: false
       required: [planId, status, normalizedQuery]
       properties:
         planId:
@@ -375,22 +488,55 @@ components:
         status:
           type: string
         normalizedQuery:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/NormalizedQuery"
+    NormalizedQuery:
+      type: object
+      additionalProperties: false
+      required: [jd, mustTerms, shouldTerms, excludeTerms, structuredFilters, keyword]
+      properties:
+        jd:
+          type: string
+          minLength: 1
+        mustTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        shouldTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        excludeTerms:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        structuredFilters:
+          $ref: "#/components/schemas/StructuredFilters"
+        keyword:
+          type: string
+          minLength: 1
     CreateSearchRunRequest:
       type: object
+      additionalProperties: false
       required: [caseId, planId, pageBudget, idempotencyKey]
       properties:
         caseId:
           type: string
+          minLength: 1
         planId:
           type: string
+          minLength: 1
         pageBudget:
           type: integer
+          minimum: 1
         idempotencyKey:
           type: string
+          minLength: 1
     CreateSearchRunResponse:
       type: object
+      additionalProperties: false
       required: [runId, status]
       properties:
         runId:
@@ -399,6 +545,7 @@ components:
           type: string
     SearchRunStatusResponse:
       type: object
+      additionalProperties: false
       required: [runId, status, progress, pageCount]
       properties:
         runId:
@@ -410,9 +557,12 @@ components:
         pageCount:
           type: integer
         errorSummary:
-          type: string
+          type:
+            - string
+            - "null"
     CandidateCard:
       type: object
+      additionalProperties: false
       required: [candidateId, externalIdentityId, name, title, company, location]
       properties:
         candidateId:
@@ -431,6 +581,7 @@ components:
           type: string
     SearchRunPageSnapshot:
       type: object
+      additionalProperties: false
       required: [pageNo, status, fetchedAt, candidates, total]
       properties:
         pageNo:
@@ -447,11 +598,16 @@ components:
         total:
           type: integer
         errorCode:
-          type: string
+          type:
+            - string
+            - "null"
         errorMessage:
-          type: string
+          type:
+            - string
+            - "null"
     SearchRunPagesResponse:
       type: object
+      additionalProperties: false
       required: [runId, snapshots]
       properties:
         runId:
@@ -460,17 +616,119 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchRunPageSnapshot"
-    ResumeSnapshot:
+    ResumeEducationItem:
       type: object
-      required: [id, content]
+      additionalProperties: false
+      required: [school, degree, major, startTime, endTime]
       properties:
-        id:
+        school:
           type: string
-        content:
-          type: object
-          additionalProperties: true
+        degree:
+          type: string
+        major:
+          type: string
+        startTime:
+          type:
+            - string
+            - "null"
+        endTime:
+          type:
+            - string
+            - "null"
+    ResumeWorkExperienceItem:
+      type: object
+      additionalProperties: false
+      required: [company, title, duration, startTime, endTime, summary]
+      properties:
+        company:
+          type: string
+        title:
+          type: string
+        duration:
+          type:
+            - string
+            - "null"
+        startTime:
+          type:
+            - string
+            - "null"
+        endTime:
+          type:
+            - string
+            - "null"
+        summary:
+          type:
+            - string
+            - "null"
+    ResumeProjection:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          workYear,
+          currentLocation,
+          expectedLocation,
+          jobState,
+          expectedSalary,
+          age,
+          education,
+          workExperience,
+          workSummaries,
+          projectNames,
+        ]
+      properties:
+        workYear:
+          type:
+            - integer
+            - "null"
+        currentLocation:
+          type:
+            - string
+            - "null"
+        expectedLocation:
+          type:
+            - string
+            - "null"
+        jobState:
+          type:
+            - string
+            - "null"
+        expectedSalary:
+          type:
+            - string
+            - "null"
+        age:
+          type:
+            - integer
+            - "null"
+        education:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResumeEducationItem"
+        workExperience:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResumeWorkExperienceItem"
+        workSummaries:
+          type: array
+          items:
+            type: string
+        projectNames:
+          type: array
+          items:
+            type: string
+    CandidateResumeView:
+      type: object
+      additionalProperties: false
+      required: [snapshotId, projection]
+      properties:
+        snapshotId:
+          type: string
+        projection:
+          $ref: "#/components/schemas/ResumeProjection"
     ResumeAnalysis:
       type: object
+      additionalProperties: false
       required: [status, summary, evidenceSpans, riskFlags]
       properties:
         status:
@@ -487,6 +745,7 @@ components:
             type: string
     VerdictRecord:
       type: object
+      additionalProperties: false
       required: [verdict, reasons, actorId, createdAt]
       properties:
         verdict:
@@ -496,7 +755,9 @@ components:
           items:
             type: string
         notes:
-          type: string
+          type:
+            - string
+            - "null"
         actorId:
           type: string
         createdAt:
@@ -504,12 +765,13 @@ components:
           format: date-time
     CandidateDetailResponse:
       type: object
-      required: [candidate, resumeSnapshot, aiAnalysis, verdictHistory]
+      additionalProperties: false
+      required: [candidate, resumeView, aiAnalysis, verdictHistory]
       properties:
         candidate:
           $ref: "#/components/schemas/CandidateCard"
-        resumeSnapshot:
-          $ref: "#/components/schemas/ResumeSnapshot"
+        resumeView:
+          $ref: "#/components/schemas/CandidateResumeView"
         aiAnalysis:
           $ref: "#/components/schemas/ResumeAnalysis"
         verdictHistory:
@@ -521,6 +783,7 @@ components:
       enum: ["Match", "Maybe", "No"]
     SaveVerdictRequest:
       type: object
+      additionalProperties: false
       required: [verdict, reasons, actorId]
       properties:
         verdict:
@@ -533,10 +796,14 @@ components:
           type: string
         actorId:
           type: string
+          minLength: 1
         resumeSnapshotId:
-          type: string
+          type:
+            - string
+            - "null"
     SaveVerdictResponse:
       type: object
+      additionalProperties: false
       required: [candidateId, latestVerdict, updatedAt]
       properties:
         candidateId:
@@ -548,19 +815,24 @@ components:
           format: date-time
     CreateExportRequest:
       type: object
+      additionalProperties: false
       required: [caseId, maskPolicy, reason, idempotencyKey]
       properties:
         caseId:
           type: string
+          minLength: 1
         maskPolicy:
           type: string
           enum: [masked, sensitive]
         reason:
           type: string
+          minLength: 1
         idempotencyKey:
           type: string
+          minLength: 1
     CreateExportResponse:
       type: object
+      additionalProperties: false
       required: [exportJobId, status]
       properties:
         exportJobId:
@@ -568,17 +840,64 @@ components:
         status:
           type: string
         filePath:
-          type: string
+          type:
+            - string
+            - "null"
     MetricItem:
       type: object
+      additionalProperties: false
       required: [name, value]
       properties:
         name:
           type: string
         value:
           type: number
+    SearchRunStatusCount:
+      type: object
+      additionalProperties: false
+      required: [status, count]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+    SearchRunFailureCount:
+      type: object
+      additionalProperties: false
+      required: [code, count]
+      properties:
+        code:
+          type: string
+        count:
+          type: integer
+    QueueSummary:
+      type: object
+      additionalProperties: false
+      required: [searchRuns]
+      properties:
+        searchRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchRunStatusCount"
+    FailureSummary:
+      type: object
+      additionalProperties: false
+      required: [searchRuns]
+      properties:
+        searchRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchRunFailureCount"
+    LatencySummary:
+      type: object
+      additionalProperties: false
+      required: [avgSearchRunSeconds]
+      properties:
+        avgSearchRunSeconds:
+          type: number
     OpsVersionInfo:
       type: object
+      additionalProperties: false
       required:
         [
           api,
@@ -606,17 +925,15 @@ components:
           type: string
     OpsSummaryResponse:
       type: object
+      additionalProperties: false
       required: [queue, failures, latency, version, metrics]
       properties:
         queue:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/QueueSummary"
         failures:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/FailureSummary"
         latency:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/LatencySummary"
         version:
           $ref: "#/components/schemas/OpsVersionInfo"
         metrics:
@@ -625,6 +942,7 @@ components:
             $ref: "#/components/schemas/MetricItem"
     TemporalSearchRunDiagnosticResponse:
       type: object
+      additionalProperties: false
       required:
         [
           runId,
@@ -676,19 +994,72 @@ components:
           type: string
     CreateEvalRunRequest:
       type: object
+      additionalProperties: false
       required: [suiteId, datasetId, targetVersion]
       properties:
         suiteId:
           type: string
+          minLength: 1
         datasetId:
           type: string
+          minLength: 1
         targetVersion:
           type: string
+          minLength: 1
     CreateEvalRunResponse:
       type: object
+      additionalProperties: false
       required: [evalRunId, status]
       properties:
         evalRunId:
           type: string
         status:
           type: string
+    ApiErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+  responses:
+    InvalidInput:
+      description: Invalid input or contract validation failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    Conflict:
+      description: The current resource state does not allow this operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    PermissionDenied:
+      description: The caller is not allowed to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ExternalDependencyFailure:
+      description: A required upstream dependency returned a non-retryable failure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    TransientDependencyFailure:
+      description: A required upstream dependency is temporarily unavailable or retryable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"

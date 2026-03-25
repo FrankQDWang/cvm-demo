@@ -2,4 +2,16 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type StructuredFilters = Record<string, any>;
+export type StructuredFilters = {
+    page: number;
+    pageSize: number;
+    location?: Array<string>;
+    degree?: number;
+    schoolType?: number;
+    workExperienceRange?: number;
+    position?: string;
+    workContent?: string;
+    company?: string;
+    school?: string;
+};
+

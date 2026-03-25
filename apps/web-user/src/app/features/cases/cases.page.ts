@@ -5,12 +5,14 @@ import { FormsModule } from '@angular/forms';
 import {
   type CandidateDetailResponse,
   type ConditionPlanDraft,
+  type ResumeEducationItem,
+  type ResumeProjection,
+  type ResumeWorkExperienceItem,
   type SearchRunPageSnapshot,
+  type StructuredFilters,
   Verdict,
   PlatformApiService,
 } from '@cvm/platform-api-client';
-
-type ResumeRecord = Record<string, unknown>;
 
 @Component({
   selector: 'app-cases-page',
@@ -26,14 +28,14 @@ type ResumeRecord = Record<string, unknown>;
       <article class="panel">
         <div class="step-title"><span>1</span><h3>新建岗位需求</h3></div>
 
-        <label>岗位名称</label>
-        <input [(ngModel)]="title" placeholder="例如：在线教育算法工程师" />
+        <label for="case-title">岗位名称</label>
+        <input id="case-title" [(ngModel)]="title" placeholder="例如：在线教育算法工程师" />
 
-        <label>负责团队</label>
-        <input [(ngModel)]="ownerTeamId" placeholder="例如：team-beijing-edtech" />
+        <label for="case-owner-team">负责团队</label>
+        <input id="case-owner-team" [(ngModel)]="ownerTeamId" placeholder="例如：team-beijing-edtech" />
 
-        <label>岗位说明</label>
-        <textarea [(ngModel)]="jdText" rows="12"></textarea>
+        <label for="case-jd-text">岗位说明</label>
+        <textarea id="case-jd-text" [(ngModel)]="jdText" rows="12"></textarea>
 
         <div class="actions">
           <button (click)="createCaseAndJd()">保存岗位需求</button>
@@ -57,55 +59,55 @@ type ResumeRecord = Record<string, unknown>;
         </div>
 
         <div *ngIf="draft; else noDraft">
-          <label>重点关键词</label>
-          <textarea [(ngModel)]="mustTermsText" rows="4"></textarea>
+          <label for="draft-must-terms">重点关键词</label>
+          <textarea id="draft-must-terms" [(ngModel)]="mustTermsText" rows="4"></textarea>
 
-          <label>加分关键词</label>
-          <textarea [(ngModel)]="shouldTermsText" rows="4"></textarea>
+          <label for="draft-should-terms">加分关键词</label>
+          <textarea id="draft-should-terms" [(ngModel)]="shouldTermsText" rows="4"></textarea>
 
-          <label>排除关键词</label>
-          <textarea [(ngModel)]="excludeTermsText" rows="3"></textarea>
+          <label for="draft-exclude-terms">排除关键词</label>
+          <textarea id="draft-exclude-terms" [(ngModel)]="excludeTermsText" rows="3"></textarea>
 
           <div class="filters-grid">
             <div>
-              <label>意向城市</label>
-              <input [(ngModel)]="locationText" placeholder="北京, 上海" />
+              <label for="draft-location">意向城市</label>
+              <input id="draft-location" [(ngModel)]="locationText" placeholder="北京, 上海" />
             </div>
             <div>
-              <label>学历要求</label>
-              <input [(ngModel)]="degreeText" placeholder="例如：2" />
+              <label for="draft-degree">学历要求</label>
+              <input id="draft-degree" [(ngModel)]="degreeText" placeholder="例如：2" />
             </div>
             <div>
-              <label>院校层级</label>
-              <input [(ngModel)]="schoolTypeText" placeholder="例如：1" />
+              <label for="draft-school-type">院校层级</label>
+              <input id="draft-school-type" [(ngModel)]="schoolTypeText" placeholder="例如：1" />
             </div>
             <div>
-              <label>工作年限</label>
-              <input [(ngModel)]="workExperienceRangeText" placeholder="例如：4" />
+              <label for="draft-work-experience-range">工作年限</label>
+              <input id="draft-work-experience-range" [(ngModel)]="workExperienceRangeText" placeholder="例如：4" />
             </div>
             <div>
-              <label>岗位方向</label>
-              <input [(ngModel)]="positionText" placeholder="例如：工程师" />
+              <label for="draft-position">岗位方向</label>
+              <input id="draft-position" [(ngModel)]="positionText" placeholder="例如：工程师" />
             </div>
             <div>
-              <label>经历方向</label>
-              <input [(ngModel)]="workContentText" placeholder="例如：语音、大模型、推荐" />
+              <label for="draft-work-content">经历方向</label>
+              <input id="draft-work-content" [(ngModel)]="workContentText" placeholder="例如：语音、大模型、推荐" />
             </div>
             <div>
-              <label>目标公司</label>
-              <input [(ngModel)]="companyText" placeholder="例如：字节跳动, 百度" />
+              <label for="draft-company">目标公司</label>
+              <input id="draft-company" [(ngModel)]="companyText" placeholder="例如：字节跳动, 百度" />
             </div>
             <div>
-              <label>目标院校</label>
-              <input [(ngModel)]="schoolText" placeholder="例如：清华大学, 北京大学" />
+              <label for="draft-school">目标院校</label>
+              <input id="draft-school" [(ngModel)]="schoolText" placeholder="例如：清华大学, 北京大学" />
             </div>
             <div>
-              <label>每页人数</label>
-              <input [(ngModel)]="pageSizeText" placeholder="10" />
+              <label for="draft-page-size">每页人数</label>
+              <input id="draft-page-size" [(ngModel)]="pageSizeText" placeholder="10" />
             </div>
             <div>
-              <label>拉取页数</label>
-              <input [(ngModel)]="pageBudgetText" placeholder="1" />
+              <label for="draft-page-budget">拉取页数</label>
+              <input id="draft-page-budget" [(ngModel)]="pageBudgetText" placeholder="1" />
             </div>
           </div>
 
@@ -194,7 +196,7 @@ type ResumeRecord = Record<string, unknown>;
         <h4>教育经历</h4>
         <ul>
           <li *ngFor="let item of resumeEducationList()">
-            {{ item['schoolName'] || item['school'] || '未提供学校' }} · {{ item['degree'] || item['education'] || '学历未知' }} · {{ item['major'] || item['speciality'] || '专业未知' }}
+            {{ item.school || '未提供学校' }} · {{ item.degree || '学历未知' }} · {{ item.major || '专业未知' }}
           </li>
         </ul>
       </div>
@@ -203,7 +205,7 @@ type ResumeRecord = Record<string, unknown>;
         <h4>工作经历</h4>
         <ul>
           <li *ngFor="let item of resumeWorkExperienceList()">
-            {{ item['companyName'] || item['company'] || '未提供公司' }} · {{ item['positionName'] || item['title'] || item['position'] || '职位未知' }}
+            {{ item.company || '未提供公司' }} · {{ item.title || '职位未知' }}
           </li>
         </ul>
       </div>
@@ -528,33 +530,34 @@ export class CasesPageComponent implements OnDestroy {
     return this.statusLabel(this.exportStatus);
   }
 
-  resumeEducationList(): ResumeRecord[] {
-    const items = this.extractResumeContent()['educationList'];
-    return Array.isArray(items) ? items.filter((item) => this.isRecord(item)) : [];
+  resumeEducationList(): ResumeEducationItem[] {
+    return this.resumeProjection()?.education ?? [];
   }
 
-  resumeWorkExperienceList(): ResumeRecord[] {
-    const items = this.extractResumeContent()['workExperienceList'];
-    return Array.isArray(items) ? items.filter((item) => this.isRecord(item)) : [];
+  resumeWorkExperienceList(): ResumeWorkExperienceItem[] {
+    return this.resumeProjection()?.workExperience ?? [];
   }
 
   resumeSummaryList(): string[] {
-    return this.stringList(this.extractResumeContent()['workSummariesAll']).slice(0, 5);
+    return this.resumeProjection()?.workSummaries.slice(0, 5) ?? [];
   }
 
   projectNameList(): string[] {
-    return this.stringList(this.extractResumeContent()['projectNameAll']).slice(0, 8);
+    return this.resumeProjection()?.projectNames.slice(0, 8) ?? [];
   }
 
   resumeMetaItems(): Array<{ label: string; value: string }> {
-    const resume = this.extractResumeContent();
+    const resume = this.resumeProjection();
+    if (!resume) {
+      return [];
+    }
     return [
-      { label: '工作年限', value: this.stringValue(resume['workYear']) },
-      { label: '当前城市', value: this.stringValue(resume['nowLocation']) },
-      { label: '意向城市', value: this.stringValue(resume['expectedLocation']) },
-      { label: '当前状态', value: this.stringValue(resume['jobState']) },
-      { label: '期望薪资', value: this.stringValue(resume['expectedSalary']) },
-      { label: '年龄', value: this.stringValue(resume['age']) }
+      { label: '工作年限', value: this.stringValue(resume.workYear) },
+      { label: '当前城市', value: this.stringValue(resume.currentLocation) },
+      { label: '意向城市', value: this.stringValue(resume.expectedLocation) },
+      { label: '当前状态', value: this.stringValue(resume.jobState) },
+      { label: '期望薪资', value: this.stringValue(resume.expectedSalary) },
+      { label: '年龄', value: this.stringValue(resume.age) }
     ].filter((item) => item.value);
   }
 
@@ -617,22 +620,21 @@ export class CasesPageComponent implements OnDestroy {
     this.shouldTermsText = draft.shouldTerms.join('\n');
     this.excludeTermsText = draft.excludeTerms.join('\n');
 
-    const filters = draft.structuredFilters ?? {};
-    const location = filters['location'];
-    this.locationText = Array.isArray(location) ? location.join(', ') : '';
-    this.degreeText = this.stringValue(filters['degree']);
-    this.schoolTypeText = this.stringValue(filters['schoolType']);
-    this.workExperienceRangeText = this.stringValue(filters['workExperienceRange']);
-    this.positionText = this.stringValue(filters['position']);
-    this.workContentText = this.stringValue(filters['workContent']);
-    this.companyText = this.stringValue(filters['company']);
-    this.schoolText = this.stringValue(filters['school']);
-    this.pageSizeText = this.stringValue(filters['pageSize']) || '10';
+    const filters = draft.structuredFilters;
+    this.locationText = filters.location?.join(', ') ?? '';
+    this.degreeText = this.stringValue(filters.degree);
+    this.schoolTypeText = this.stringValue(filters.schoolType);
+    this.workExperienceRangeText = this.stringValue(filters.workExperienceRange);
+    this.positionText = this.stringValue(filters.position);
+    this.workContentText = this.stringValue(filters.workContent);
+    this.companyText = this.stringValue(filters.company);
+    this.schoolText = this.stringValue(filters.school);
+    this.pageSizeText = this.stringValue(filters.pageSize) || '10';
     this.pageBudgetText = this.pageBudgetText || '1';
   }
 
   private buildDraft(): ConditionPlanDraft {
-    const structuredFilters: Record<string, unknown> = {
+    const structuredFilters: StructuredFilters = {
       page: 1,
       pageSize: this.readNumber(this.pageSizeText, 10)
     };
@@ -658,14 +660,22 @@ export class CasesPageComponent implements OnDestroy {
     };
   }
 
-  private applyOptionalString(target: Record<string, unknown>, key: string, raw: string): void {
+  private applyOptionalString(
+    target: StructuredFilters,
+    key: 'position' | 'workContent' | 'company' | 'school',
+    raw: string,
+  ): void {
     const value = raw.trim();
     if (value) {
       target[key] = value;
     }
   }
 
-  private applyOptionalNumber(target: Record<string, unknown>, key: string, raw: string): void {
+  private applyOptionalNumber(
+    target: StructuredFilters,
+    key: 'degree' | 'schoolType' | 'workExperienceRange',
+    raw: string,
+  ): void {
     const value = raw.trim();
     if (!value) {
       return;
@@ -691,19 +701,11 @@ export class CasesPageComponent implements OnDestroy {
     return Number.isNaN(parsed) ? fallback : parsed;
   }
 
-  private extractResumeContent(): ResumeRecord {
-    const snapshotContent = this.selectedCandidate?.resumeSnapshot.content;
-    if (!snapshotContent) {
-      return {};
-    }
-    const nested = snapshotContent['content'];
-    if (this.isRecord(nested)) {
-      return nested;
-    }
-    return this.isRecord(snapshotContent) ? snapshotContent : {};
+  private resumeProjection(): ResumeProjection | null {
+    return this.selectedCandidate?.resumeView.projection ?? null;
   }
 
-  private stringValue(value: unknown): string {
+  private stringValue(value: string | number | null | undefined): string {
     if (typeof value === 'string') {
       return value;
     }
@@ -711,16 +713,6 @@ export class CasesPageComponent implements OnDestroy {
       return String(value);
     }
     return '';
-  }
-
-  private stringList(value: unknown): string[] {
-    if (typeof value === 'string') {
-      return [value];
-    }
-    if (Array.isArray(value)) {
-      return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-    }
-    return [];
   }
 
   private riskFlagLabel(flag: string): string {
@@ -731,10 +723,6 @@ export class CasesPageComponent implements OnDestroy {
       return `当前状态：${flag.replace('Job state: ', '')}`;
     }
     return flag;
-  }
-
-  private isRecord(value: unknown): value is ResumeRecord {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private resetForNewCase(): void {
