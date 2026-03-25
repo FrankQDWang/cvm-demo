@@ -19,8 +19,9 @@ DOCS_OUT = ROOT / "docs/_generated"
 TS_CANCELABLE = TS_OUT / "core/CancelablePromise.ts"
 
 
-def run(cmd: list[str]) -> None:
-    subprocess.run(cmd, check=True, cwd=ROOT)
+def run(cmd: list[str], *, use_mise: bool = False) -> None:
+    full_cmd = ["mise", "exec", "--", *cmd] if use_mise else cmd
+    subprocess.run(full_cmd, check=True, cwd=ROOT)
 
 
 def generate_python_models() -> None:
@@ -40,6 +41,7 @@ def generate_python_models() -> None:
             "pydantic_v2.BaseModel",
             "--target-python-version",
             "3.12",
+            "--disable-timestamp",
             "--use-standard-collections",
         ]
     )
@@ -53,7 +55,8 @@ def generate_ts_client() -> None:
             "pnpm",
             "run",
             "codegen:ts",
-        ]
+        ],
+        use_mise=True,
     )
     TS_CANCELABLE.write_text(
         "/* generated override for Angular compatibility */\n"
