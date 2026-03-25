@@ -83,10 +83,6 @@ jobs:
       CVM_TEMPORAL_PORT: "17233"
       CVM_TEMPORAL_UI_PORT: "18080"
       CVM_OPENSEARCH_PORT: "19200"
-      CVM_TEST_API_BASE_URL: "http://127.0.0.1:18010"
-      CVM_TEMPORAL_HOST: "127.0.0.1:17233"
-      CVM_OPENSEARCH_BASE_URL: "http://127.0.0.1:19200"
-      CVM_TEMPORAL_UI_BASE_URL: "http://127.0.0.1:18080"
       CVM_RESUME_SOURCE_MODE: "mock"
       CVM_LLM_MODE: "stub"
       CVM_EXTERNAL_STACK: "1"
@@ -95,6 +91,18 @@ jobs:
       - uses: ./.github/actions/setup-ci-env
         with:
           python-version: "3.12"
+      - name: Resolve stack host
+        run: |
+          set -euo pipefail
+          STACK_HOST="$(ip route show default 2>/dev/null | awk 'NR==1 {print $3}')"
+          if [[ -z "${STACK_HOST}" ]]; then
+            STACK_HOST="127.0.0.1"
+          fi
+          echo "CVM_STACK_HOST=${STACK_HOST}" >> "$GITHUB_ENV"
+          echo "CVM_TEST_API_BASE_URL=http://${STACK_HOST}:${CVM_API_PORT}" >> "$GITHUB_ENV"
+          echo "CVM_TEMPORAL_HOST=${STACK_HOST}:${CVM_TEMPORAL_PORT}" >> "$GITHUB_ENV"
+          echo "CVM_OPENSEARCH_BASE_URL=http://${STACK_HOST}:${CVM_OPENSEARCH_PORT}" >> "$GITHUB_ENV"
+          echo "CVM_TEMPORAL_UI_BASE_URL=http://${STACK_HOST}:${CVM_TEMPORAL_UI_PORT}" >> "$GITHUB_ENV"
       - name: Bring up stack
         run: docker compose up -d --build --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
       - name: Test Stack
