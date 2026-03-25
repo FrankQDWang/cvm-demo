@@ -6,6 +6,10 @@ inputs:
     description: Python version used by setup-python and uv.
     required: false
     default: "3.12"
+  uv-version:
+    description: Pinned uv version to avoid network-dependent latest resolution in CI.
+    required: false
+    default: "0.11.1"
   install-node:
     description: Install mise and provision Node and pnpm.
     required: false
@@ -27,6 +31,7 @@ runs:
         python-version: ${{ inputs.python-version }}
     - uses: astral-sh/setup-uv@v7
       with:
+        version: ${{ inputs.uv-version }}
         python-version: ${{ inputs.python-version }}
     - name: Install mise
       if: ${{ inputs.install-node == 'true' || inputs.install-node-dependencies == 'true' }}
