@@ -18,13 +18,12 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
+      - name: Install Python runtime
+        run: uv python install "${UV_PYTHON}"
       - name: Install mise
         run: |
           curl -fsSL https://mise.run | sh
