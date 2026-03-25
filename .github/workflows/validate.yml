@@ -94,10 +94,19 @@ jobs:
       - name: Resolve stack host
         run: |
           set -euo pipefail
-          STACK_HOST="$(ip route show default 2>/dev/null | awk 'NR==1 {print $3}')"
-          if [[ -z "${STACK_HOST}" ]]; then
-            STACK_HOST="127.0.0.1"
-          fi
+          STACK_HOST="$(
+            python - <<'PY'
+            import socket
+
+            for candidate in ("host.docker.internal", "gateway.docker.internal", "127.0.0.1"):
+                try:
+                    socket.getaddrinfo(candidate, None)
+                except socket.gaierror:
+                    continue
+                print(candidate)
+                break
+            PY
+          )"
           echo "CVM_STACK_HOST=${STACK_HOST}" >> "$GITHUB_ENV"
           echo "CVM_TEST_API_BASE_URL=http://${STACK_HOST}:${CVM_API_PORT}" >> "$GITHUB_ENV"
           echo "CVM_TEMPORAL_HOST=${STACK_HOST}:${CVM_TEMPORAL_PORT}" >> "$GITHUB_ENV"
