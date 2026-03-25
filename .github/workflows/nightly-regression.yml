@@ -39,24 +39,26 @@ jobs:
       - name: Resolve stack host
         run: |
           set -euo pipefail
-          STACK_HOST="$(
-            python - <<'PY'
-            import socket
+          python - <<'PY'
+          import os
+          import socket
 
-            for candidate in ("host.docker.internal", "gateway.docker.internal", "127.0.0.1"):
-                try:
-                    socket.getaddrinfo(candidate, None)
-                except socket.gaierror:
-                    continue
-                print(candidate)
-                break
-            PY
-          )"
-          echo "CVM_STACK_HOST=${STACK_HOST}" >> "$GITHUB_ENV"
-          echo "CVM_TEST_API_BASE_URL=http://${STACK_HOST}:${CVM_API_PORT}" >> "$GITHUB_ENV"
-          echo "CVM_TEMPORAL_HOST=${STACK_HOST}:${CVM_TEMPORAL_PORT}" >> "$GITHUB_ENV"
-          echo "CVM_OPENSEARCH_BASE_URL=http://${STACK_HOST}:${CVM_OPENSEARCH_PORT}" >> "$GITHUB_ENV"
-          echo "CVM_TEMPORAL_UI_BASE_URL=http://${STACK_HOST}:${CVM_TEMPORAL_UI_PORT}" >> "$GITHUB_ENV"
+          stack_host = "127.0.0.1"
+          for candidate in ("host.docker.internal", "gateway.docker.internal", "127.0.0.1"):
+              try:
+                  socket.getaddrinfo(candidate, None)
+              except socket.gaierror:
+                  continue
+              stack_host = candidate
+              break
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"CVM_STACK_HOST={stack_host}\n")
+              env_file.write(f"CVM_TEST_API_BASE_URL=http://{stack_host}:{os.environ['CVM_API_PORT']}\n")
+              env_file.write(f"CVM_TEMPORAL_HOST={stack_host}:{os.environ['CVM_TEMPORAL_PORT']}\n")
+              env_file.write(f"CVM_OPENSEARCH_BASE_URL=http://{stack_host}:{os.environ['CVM_OPENSEARCH_PORT']}\n")
+              env_file.write(f"CVM_TEMPORAL_UI_BASE_URL=http://{stack_host}:{os.environ['CVM_TEMPORAL_UI_PORT']}\n")
+          PY
       - name: Bring up stack
         run: docker compose up -d --build --remove-orphans postgres opensearch temporal temporal-ui temporal-admin-tools api worker
       - name: Blocking eval gate
