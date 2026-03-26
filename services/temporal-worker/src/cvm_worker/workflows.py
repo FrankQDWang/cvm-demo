@@ -1,31 +1,26 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from temporalio import workflow
 
-from temporalio import activity, workflow
+from pydantic_ai.durable_exec.temporal import PydanticAIWorkflow
 
 with workflow.unsafe.imports_passed_through():
-    from cvm_platform.infrastructure.db import SessionLocal
-    from cvm_platform.infrastructure.service_factory import build_platform_service
     from cvm_platform.settings.config import settings
+    from cvm_worker.agents import build_temporal_agents
+    from cvm_worker.execution import execute_agent_run_workflow
 
 
-@activity.defn
-def execute_agent_run(run_id: str) -> str:
-    session = SessionLocal()
-    try:
-        service = build_platform_service(session, settings)
-        run = service.execute_agent_run(run_id)
-        return run.status
-    finally:
-        session.close()
+AGENT_BUNDLE = build_temporal_agents(settings)
+
 
 @workflow.defn(name="AgentRunWorkflow")
-class AgentRunWorkflow:
+class AgentRunWorkflow(PydanticAIWorkflow):
+    __pydantic_ai_agents__ = AGENT_BUNDLE.all_agents
+
     @workflow.run
     async def run(self, run_id: str) -> str:
-        return await workflow.execute_activity(
-            execute_agent_run,
-            run_id,
-            start_to_close_timeout=timedelta(seconds=180),
+        return await execute_agent_run_workflow(
+            run_id=run_id,
+            agents=AGENT_BUNDLE,
+            runtime_settings=settings,
         )

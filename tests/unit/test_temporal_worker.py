@@ -2,58 +2,70 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from cvm_worker import main as worker_main
-from cvm_worker.workflows import AgentRunWorkflow, execute_agent_run
+from cvm_worker import workflows
+from cvm_worker.activities import (
+    cts_search_candidates,
+    load_agent_run_snapshot,
+    persist_agent_run_patch,
+    publish_langfuse_trace,
+)
+from cvm_worker.workflows import AgentRunWorkflow
 
 
-def test_execute_agent_run_delegates_to_platform_service(monkeypatch) -> None:
-    calls: dict[str, object] = {}
-
-    class FakeSession:
-        def close(self) -> None:
-            calls["closed"] = True
-
-    class FakeService:
-        def execute_agent_run(self, run_id: str):
-            calls["run_id"] = run_id
-            return type("RunResult", (), {"status": "completed"})()
-
-    monkeypatch.setattr("cvm_worker.workflows.SessionLocal", lambda: FakeSession())
-    monkeypatch.setattr("cvm_worker.workflows.build_platform_service", lambda session, settings: FakeService())
-
-    result = execute_agent_run("agent_123")
-
-    assert result == "completed"
-    assert calls == {"run_id": "agent_123", "closed": True}
-
-
-def test_agent_run_workflow_invokes_activity(monkeypatch) -> None:
+def test_agent_run_workflow_delegates_to_execution_entrypoint(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    fake_bundle = object()
 
-    async def fake_execute_activity(activity_fn, run_id: str, *, start_to_close_timeout) -> str:
-        captured["activity_fn"] = activity_fn
+    async def fake_execute_agent_run_workflow(*, run_id: str, agents, runtime_settings) -> str:
         captured["run_id"] = run_id
-        captured["timeout_seconds"] = int(start_to_close_timeout.total_seconds())
+        captured["agents"] = agents
+        captured["runtime_settings"] = runtime_settings
         return "completed"
 
-    monkeypatch.setattr("cvm_worker.workflows.workflow.execute_activity", fake_execute_activity)
+    monkeypatch.setattr(workflows, "AGENT_BUNDLE", fake_bundle)
+    monkeypatch.setattr(workflows, "execute_agent_run_workflow", fake_execute_agent_run_workflow)
 
     result = asyncio.run(AgentRunWorkflow().run("agent_456"))
 
     assert result == "completed"
     assert captured["run_id"] == "agent_456"
-    assert captured["timeout_seconds"] == 180
+    assert captured["agents"] is fake_bundle
+    assert captured["runtime_settings"] is workflows.settings
 
 
-def test_run_worker_builds_and_runs_temporal_worker(monkeypatch) -> None:
+def test_run_worker_requires_openai_api_key_for_live_profile(monkeypatch) -> None:
+    monkeypatch.setattr("cvm_worker.main.initialize_database", lambda: None)
+    monkeypatch.setattr(worker_main.settings, "agent_profile", "live")
+    monkeypatch.setattr(worker_main.settings, "openai_api_key", "")
+
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live"):
+        asyncio.run(worker_main.run_worker())
+
+
+def test_run_worker_builds_temporal_worker_with_plugin(monkeypatch) -> None:
     calls: dict[str, object] = {}
+    plugin = object()
 
     class FakeWorker:
-        def __init__(self, client, *, task_queue, workflows, activities, activity_executor) -> None:
+        def __init__(
+            self,
+            client,
+            *,
+            task_queue,
+            workflows,
+            activities,
+            activity_executor,
+            plugins,
+        ) -> None:
+            calls["client"] = client
             calls["task_queue"] = task_queue
             calls["workflows"] = workflows
             calls["activities"] = activities
             calls["activity_executor"] = activity_executor
+            calls["worker_plugins"] = plugins
 
         async def run(self) -> None:
             calls["ran"] = True
@@ -61,14 +73,20 @@ def test_run_worker_builds_and_runs_temporal_worker(monkeypatch) -> None:
     class FakeClient:
         pass
 
-    async def fake_connect(host: str, *, namespace: str) -> FakeClient:
+    async def fake_connect(host: str, *, namespace: str, plugins) -> FakeClient:
         calls["temporal_host"] = host
         calls["namespace"] = namespace
+        calls["client_plugins"] = plugins
         return FakeClient()
 
     monkeypatch.setattr("cvm_worker.main.initialize_database", lambda: calls.setdefault("initialized", True))
+    monkeypatch.setattr("cvm_worker.main.PydanticAIPlugin", lambda: plugin)
     monkeypatch.setattr("cvm_worker.main.Client.connect", fake_connect)
     monkeypatch.setattr("cvm_worker.main.Worker", FakeWorker)
+    monkeypatch.setattr(worker_main.settings, "agent_profile", "deterministic")
+    monkeypatch.setattr(worker_main.settings, "openai_api_key", "")
+    monkeypatch.setattr(worker_main.settings, "temporal_host", "127.0.0.1:7233")
+    monkeypatch.setattr(worker_main.settings, "temporal_namespace", "default")
     monkeypatch.setattr(worker_main.settings, "temporal_task_queue", "cvm-agent-runs")
 
     asyncio.run(worker_main.run_worker())
@@ -76,8 +94,17 @@ def test_run_worker_builds_and_runs_temporal_worker(monkeypatch) -> None:
     assert calls["initialized"] is True
     assert calls["ran"] is True
     assert calls["task_queue"] == "cvm-agent-runs"
+    assert calls["temporal_host"] == "127.0.0.1:7233"
+    assert calls["namespace"] == "default"
+    assert calls["client_plugins"] == [plugin]
+    assert calls["worker_plugins"] == [plugin]
     assert calls["workflows"] == [AgentRunWorkflow]
-    assert calls["activities"] == [execute_agent_run]
+    assert calls["activities"] == [
+        load_agent_run_snapshot,
+        persist_agent_run_patch,
+        cts_search_candidates,
+        publish_langfuse_trace,
+    ]
 
 
 def test_worker_main_uses_asyncio_runner(monkeypatch) -> None:

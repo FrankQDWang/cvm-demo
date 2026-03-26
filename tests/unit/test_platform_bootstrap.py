@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from temporalio.api.enums.v1 import WorkflowExecutionStatus
 
 from cvm_platform.api import dependencies, openapi_contract
+from cvm_platform import main as platform_main
 from cvm_platform.infrastructure import db, service_factory, temporal_diagnostics
 from cvm_platform.settings.config import Settings
 
@@ -39,7 +40,7 @@ def test_load_openapi_contract_and_bind_openapi() -> None:
 
 
 def test_initialize_database_requires_postgresql(monkeypatch) -> None:
-    fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
     monkeypatch.setattr(db, "engine", fake_engine)
 
     with pytest.raises(RuntimeError, match="Only PostgreSQL"):
@@ -93,19 +94,37 @@ def test_get_session_closes_session(monkeypatch) -> None:
     assert events == ["closed"]
 
 
-def test_build_platform_service_wires_runtime_and_adapters(monkeypatch) -> None:
+def test_build_platform_service_wires_runtime_and_uow(monkeypatch) -> None:
     runtime_config = SimpleNamespace(name="runtime")
-    llm = object()
-    resume_source = object()
     monkeypatch.setattr(service_factory, "build_runtime_config", lambda settings: runtime_config)
-    monkeypatch.setattr(service_factory, "build_llm", lambda settings: llm)
-    monkeypatch.setattr(service_factory, "build_resume_source", lambda settings: resume_source)
 
-    service = service_factory.build_platform_service(session=object(), settings=Settings(_env_file=None))
+    session = object()
+    service = service_factory.build_platform_service(session=session, settings=Settings(_env_file=None))
 
     assert service.runtime_config is runtime_config
-    assert service.llm is llm
-    assert service.resume_source is resume_source
+    assert service.uow.session is session
+
+
+def test_settings_default_agent_runtime_is_live() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.agent_profile == "live"
+    assert settings.agent_min_rounds == 3
+    assert settings.agent_max_rounds == 5
+    assert settings.agent_round_fetch_schedule == "10,5,5"
+
+
+def test_settings_reject_invalid_agent_round_window() -> None:
+    with pytest.raises(ValueError, match="CVM_AGENT_MIN_ROUNDS"):
+        Settings(_env_file=None, agent_profile="deterministic", agent_min_rounds=4, agent_max_rounds=3)
+
+
+def test_create_app_requires_openai_api_key_for_live_startup(monkeypatch) -> None:
+    monkeypatch.setattr(platform_main.settings, "agent_profile", "live")
+    monkeypatch.setattr(platform_main.settings, "openai_api_key", "")
+
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live"):
+        platform_main.create_app()
 
 
 def test_temporal_timestamp_helpers() -> None:

@@ -85,7 +85,7 @@ def test_build_agent_run_tracer_returns_noop_without_keys(monkeypatch) -> None:
         run_id="agent_1",
         jd_text="jd",
         sourcing_preference_text="pref",
-        model_version="stub-1",
+        model_version="deterministic",
         prompt_version="agent-loop-v1",
     ) as handle:
         assert handle.trace_id is None

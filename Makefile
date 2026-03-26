@@ -9,7 +9,7 @@ SHELL := /bin/zsh
 # - make down: 停止并清理当前 compose 资源
 # - make status: 查看容器状态
 # - make dev-api / dev-worker / dev-web-*: 宿主机开发模式启动
-.PHONY: codegen validate validate-static validate-contracts check-no-legacy-searchrun test test-stack test-stack-run eval-critical eval-critical-run verify-images install-single-branch-guard dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
+.PHONY: codegen validate validate-static validate-contracts check-no-legacy-searchrun check-no-legacy-agent-config check-no-embeddeddb test test-stack test-stack-run eval-critical eval-critical-run verify-images install-single-branch-guard dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
 
 # 根据 contract 重新生成 generated 代码
 codegen:
@@ -22,6 +22,8 @@ validate: validate-static validate-contracts test
 validate-static:
 	uv run python tools/ci/check_forbidden_runtime_artifacts.py
 	$(MAKE) --no-print-directory check-no-legacy-searchrun
+	$(MAKE) --no-print-directory check-no-legacy-agent-config
+	$(MAKE) --no-print-directory check-no-embeddeddb
 	uv run ruff check
 	uv run python tools/ci/run_basedpyright.py
 	uv run python tools/ci/check_architecture.py
@@ -42,6 +44,21 @@ check-no-legacy-searchrun:
 		exit 1; \
 	fi
 
+check-no-legacy-agent-config:
+	@if rg -n "CVM_LLM_|llm_mode|llm_provider|llm_model|llm_timeout_seconds|llm_base_url" \
+		apps services tests libs tools README.md docker-compose.yml .env.example .github docs/00-INDEX.md docs/ARCHITECTURE/context-map.md docs/PRODUCT/requirement-traceability.md docs/EXEC-PLANS/active; then \
+		echo "Legacy CVM_LLM_* runtime config references are not allowed."; \
+		exit 1; \
+	fi
+
+check-no-embeddeddb:
+	@pattern="$$(printf '%s|%s|%s|%s|%s' 'sqli''te' 'py''sqli''te' 'aio''sqli''te' 'sqli''te3' 'Static''Pool')"; \
+	if rg -n -i "$$pattern" \
+		apps services tests libs tools README.md docker-compose.yml .env.example docs .github; then \
+		echo "Embedded-database references are forbidden. This repository is PostgreSQL-only."; \
+		exit 1; \
+	fi
+
 # 契约门：schema、codegen、generated/docs clean
 validate-contracts:
 	uv run python tools/ci/check_links.py
@@ -49,11 +66,11 @@ validate-contracts:
 	$(MAKE) codegen
 	uv run python tools/ci/check_generated_clean.py
 
-# 确定性测试：不依赖本地 compose 栈
+# 确定性测试：自动拉起隔离 PostgreSQL，并显式覆盖为 deterministic agent profile
 test:
-	uv run pytest -m 'not stack' --cov --cov-report=term-missing
+	CVM_AGENT_PROFILE=deterministic CVM_RESUME_SOURCE_MODE=mock ./tools/ci/with_test_postgres.sh uv run pytest -m 'not stack' --cov --cov-report=term-missing
 
-# 栈集成测试：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
+# 栈集成测试：默认自带 deterministic mock/profile stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 test-stack:
 	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
 		$(MAKE) --no-print-directory test-stack-run; \
@@ -65,7 +82,7 @@ test-stack-run:
 	uv run python tools/ci/check_local_stack_ready.py
 	uv run pytest -m stack
 
-# 最小 blocking eval 套件：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
+# 最小 blocking eval 套件：默认自带 deterministic mock/profile stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 eval-critical:
 	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
 		$(MAKE) --no-print-directory eval-critical-run; \
@@ -148,7 +165,7 @@ rebuild-temporal-stack:
 	docker compose up -d --force-recreate --remove-orphans opensearch temporal temporal-ui temporal-admin-tools
 	@$(MAKE) --no-print-directory urls
 
-# 做一次本地 Temporal execution/visibility/UI 专项验收：默认自带 deterministic mock/stub stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
+# 做一次本地 Temporal execution/visibility/UI 专项验收：默认自带 deterministic mock/profile stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 temporal-visibility-smoke:
 	@if [[ "$${CVM_EXTERNAL_STACK:-0}" == "1" ]]; then \
 		$(MAKE) --no-print-directory temporal-visibility-smoke-run; \

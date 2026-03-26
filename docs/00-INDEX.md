@@ -15,6 +15,7 @@
 - [MVP Slice 03 List Detail Verdict](EXEC-PLANS/active/mvp-slice-03-list-detail-verdict-plan.md)
 - [MVP Slice 04 Export Audit Ops](EXEC-PLANS/active/mvp-slice-04-export-audit-ops-plan.md)
 - [MVP Slice 05 Harness Evals Gates](EXEC-PLANS/active/mvp-slice-05-harness-evals-gates-plan.md)
+- [Pydantic-AI Temporal Migration](EXEC-PLANS/active/pydantic-ai-temporal-migration-plan.md)
 
 ## Execution Plans Completed
 

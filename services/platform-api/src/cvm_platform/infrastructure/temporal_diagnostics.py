@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC
-from typing import cast
+from typing import Callable, cast
 from urllib.parse import quote
 
 from google.protobuf.timestamp_pb2 import Timestamp
 from temporalio.api.enums.v1 import WorkflowExecutionStatus
-from temporalio.client import Client
+from temporalio.client import Client, WorkflowHandle
 from temporalio.service import RPCError
 
 from cvm_platform.application.dto import AgentRunRecord
@@ -73,7 +73,11 @@ async def inspect_agent_run(run: AgentRunRecord, settings: Settings) -> dict[str
     client = await Client.connect(settings.temporal_host, namespace=namespace)
 
     try:
-        description = await client.get_workflow_handle(workflow_id).describe()
+        get_workflow_handle = cast(
+            Callable[[str], WorkflowHandle[object, object]],
+            getattr(client, "get_workflow_handle"),
+        )
+        description = await get_workflow_handle(workflow_id).describe()
         info = description.raw_description.workflow_execution_info
         diagnostic.temporalExecutionFound = True
         diagnostic.temporalExecutionStatus = cast(str, getattr(WorkflowExecutionStatus, "Name")(info.status))

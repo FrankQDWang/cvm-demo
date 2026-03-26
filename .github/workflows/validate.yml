@@ -60,6 +60,8 @@ jobs:
       - docker-cvm-demo
     env:
       UV_PYTHON: "3.12"
+      COMPOSE_PROJECT_NAME: cvm-test-${{ github.run_id }}
+      CVM_TEST_POSTGRES_PORT: "15432"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-ci-env
@@ -84,7 +86,8 @@ jobs:
       CVM_TEMPORAL_UI_PORT: "18080"
       CVM_OPENSEARCH_PORT: "19200"
       CVM_RESUME_SOURCE_MODE: "mock"
-      CVM_LLM_MODE: "stub"
+      CVM_AGENT_PROFILE: "deterministic"
+      CVM_AGENT_MODEL: "gpt-5.4-mini"
       CVM_EXTERNAL_STACK: "1"
     steps:
       - uses: actions/checkout@v4
@@ -147,7 +150,8 @@ jobs:
       CVM_TEMPORAL_UI_PORT: "38080"
       CVM_OPENSEARCH_PORT: "39200"
       CVM_RESUME_SOURCE_MODE: "mock"
-      CVM_LLM_MODE: "stub"
+      CVM_AGENT_PROFILE: "deterministic"
+      CVM_AGENT_MODEL: "gpt-5.4-mini"
       CVM_EXTERNAL_STACK: "1"
     steps:
       - uses: actions/checkout@v4

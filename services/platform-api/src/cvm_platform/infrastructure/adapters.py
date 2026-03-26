@@ -9,10 +9,10 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from cvm_platform.application.policies import resume_hash
+from cvm_platform.domain.ports import ResumeSourcePort
 from cvm_platform.domain.errors import (
     ExternalDependencyError,
     TransientDependencyError,
-    ValidationError,
 )
 from cvm_platform.domain.types import (
     AgentSearchStrategyData,
@@ -77,7 +77,7 @@ ALLOWED_STRUCTURED_FILTER_KEYS = {
     "company",
     "school",
 }
-PLACEHOLDER_MODEL_VERSIONS = {"", "default", "stub", "stub-1"}
+PLACEHOLDER_MODEL_VERSIONS = {"", "default", "deterministic"}
 
 
 def _dump_structured_filters(model: StructuredFiltersBoundaryModel) -> StructuredFiltersPayload:
@@ -344,69 +344,6 @@ class StubLLMAdapter:
                 "structuredFilters": cast(StructuredFiltersPayload, cast(object, filters)),
             },
         )
-
-
-class MisconfiguredLLMAdapter:
-    def __init__(self, message: str) -> None:
-        self.message = message
-
-    def draft_keywords(
-        self,
-        jd_text: str,
-        model_version: str,
-        prompt_version: str,
-    ) -> ConditionPlanDraftData:
-        del jd_text, model_version, prompt_version
-        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
-
-    def extract_agent_search_strategy(
-        self,
-        jd_text: str,
-        sourcing_preference_text: str,
-        model_version: str,
-        prompt_version: str,
-    ) -> AgentSearchStrategyData:
-        del jd_text, sourcing_preference_text, model_version, prompt_version
-        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
-
-    def analyze_resume_match(
-        self,
-        jd_text: str,
-        sourcing_preference_text: str,
-        strategy: NormalizedQueryPayload,
-        candidate: CandidateData,
-        model_version: str,
-        prompt_version: str,
-    ) -> ResumeMatchData:
-        del jd_text, sourcing_preference_text, strategy, candidate, model_version, prompt_version
-        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
-
-    def reflect_search_progress(
-        self,
-        jd_text: str,
-        sourcing_preference_text: str,
-        strategy: NormalizedQueryPayload,
-        round_ledger: list[dict[str, object]],
-        round_no: int,
-        max_rounds: int,
-        new_candidate_count: int,
-        seen_candidate_count: int,
-        model_version: str,
-        prompt_version: str,
-    ) -> SearchReflectionData:
-        del (
-            jd_text,
-            sourcing_preference_text,
-            strategy,
-            round_ledger,
-            round_no,
-            max_rounds,
-            new_candidate_count,
-            seen_candidate_count,
-            model_version,
-            prompt_version,
-        )
-        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
 
 
 class OpenAILLMAdapter:
@@ -1283,7 +1220,7 @@ class CtsResumeSourceAdapter:
         }
 
 
-def build_resume_source(settings: Settings):
+def build_resume_source(settings: Settings) -> ResumeSourcePort:
     if settings.resume_source_mode.lower() == "cts":
         if not settings.cts_tenant_key or not settings.cts_tenant_secret:
             return MissingCtsCredentialsAdapter()
@@ -1294,22 +1231,3 @@ def build_resume_source(settings: Settings):
             timeout_seconds=settings.cts_timeout_seconds,
         )
     return MockResumeSourceAdapter()
-
-
-def build_llm(settings: Settings):
-    if settings.llm_mode.lower() == "stub":
-        return StubLLMAdapter()
-    if settings.llm_provider.lower() != "openai":
-        return MisconfiguredLLMAdapter(
-            f"Unsupported CVM_LLM_PROVIDER: {settings.llm_provider}",
-        )
-    if not settings.llm_api_key:
-        return MisconfiguredLLMAdapter(
-            "OPENAI_API_KEY is required when CVM_LLM_MODE is not stub.",
-        )
-    return OpenAILLMAdapter(
-        api_key=settings.llm_api_key,
-        model=settings.llm_model,
-        base_url=settings.llm_base_url,
-        timeout_seconds=settings.llm_timeout_seconds,
-    )

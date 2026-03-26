@@ -14,9 +14,10 @@ class PlatformRuntimeConfig:
     build_id: str
     temporal_ui_base_url: str
     temporal_visibility_backend: str
-    default_llm_model: str
+    default_agent_model: str
     default_agent_prompt_version: str
-    llm_mode: str
+    agent_profile: str
+    default_agent_min_rounds: int
     default_agent_max_rounds: int
     default_agent_round_fetch_schedule: list[int]
     default_agent_final_top_k: int

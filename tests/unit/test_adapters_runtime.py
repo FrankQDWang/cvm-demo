@@ -10,11 +10,9 @@ from cvm_platform.domain.errors import ExternalDependencyError, TransientDepende
 from cvm_platform.infrastructure.adapters import (
     CtsResumeSourceAdapter,
     MissingCtsCredentialsAdapter,
-    MisconfiguredLLMAdapter,
     MockResumeSourceAdapter,
     OpenAILLMAdapter,
     StubLLMAdapter,
-    build_llm,
     build_resume_source,
 )
 from cvm_platform.infrastructure.boundary_models import OpenAIResponsesEnvelopeModel
@@ -121,7 +119,7 @@ def _cts_candidate_payload() -> dict[str, object]:
 def test_stub_llm_adapter_extracts_high_signal_filters() -> None:
     draft = StubLLMAdapter().draft_keywords(
         "上海 985 硕士 5年以上 算法工程师 Agent ReAct LLM",
-        model_version="stub-1",
+        model_version="deterministic",
         prompt_version="draft-v1",
     )
 
@@ -141,7 +139,7 @@ def test_stub_llm_adapter_extracts_high_signal_filters() -> None:
 def test_stub_llm_adapter_falls_back_to_plain_terms() -> None:
     draft = StubLLMAdapter().draft_keywords(
         "Rust Elixir Phoenix distributed systems",
-        model_version="stub-1",
+        model_version="deterministic",
         prompt_version="draft-v1",
     )
 
@@ -184,7 +182,7 @@ def test_openai_adapter_surfaces_transport_failures(
 
     adapter = OpenAILLMAdapter(api_key="test-key", model="gpt-5.4-mini")
     with pytest.raises(expected_type) as exc_info:
-        adapter.draft_keywords("Need Python", model_version="stub-1", prompt_version="draft-v1")
+        adapter.draft_keywords("Need Python", model_version="deterministic", prompt_version="draft-v1")
 
     assert getattr(exc_info.value, "code") == expected_code
 
@@ -197,7 +195,7 @@ def test_openai_adapter_rejects_invalid_json_and_empty_output(monkeypatch: pytes
     adapter = OpenAILLMAdapter(api_key="test-key", model="gpt-5.4-mini")
 
     with pytest.raises(ExternalDependencyError, match="valid JSON"):
-        adapter.draft_keywords("Need Python", model_version="stub-1", prompt_version="draft-v1")
+        adapter.draft_keywords("Need Python", model_version="deterministic", prompt_version="draft-v1")
 
     with pytest.raises(ExternalDependencyError, match="output_text"):
         adapter._extract_output_text(
@@ -260,7 +258,7 @@ def test_mock_and_missing_resume_sources_return_contract_failures() -> None:
     assert missing.error_code == "CTS_NOT_CONFIGURED"
 
 
-def test_build_resume_source_and_llm_select_expected_adapters() -> None:
+def test_build_resume_source_selects_expected_adapters() -> None:
     assert isinstance(build_resume_source(Settings(_env_file=None, resume_source_mode="mock")), MockResumeSourceAdapter)
     assert isinstance(
         build_resume_source(
@@ -277,11 +275,6 @@ def test_build_resume_source_and_llm_select_expected_adapters() -> None:
         build_resume_source(Settings(_env_file=None, resume_source_mode="cts", cts_tenant_key="", cts_tenant_secret="")),
         MissingCtsCredentialsAdapter,
     )
-
-    llm = build_llm(Settings(_env_file=None, llm_mode="live", llm_provider="anthropic", llm_api_key="test-key"))
-    assert isinstance(llm, MisconfiguredLLMAdapter)
-    with pytest.raises(Exception, match="Unsupported CVM_LLM_PROVIDER"):
-        llm.draft_keywords("Need Python", "gpt-5.4-mini", "draft-v1")
 
 
 def test_cts_resume_source_adapter_maps_successful_response(monkeypatch: pytest.MonkeyPatch) -> None:

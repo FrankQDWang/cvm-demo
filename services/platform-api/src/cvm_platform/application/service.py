@@ -5,7 +5,6 @@ from pathlib import Path
 
 from cvm_domain_kernel import new_id, now_utc
 from cvm_platform.application.agent_runs import AgentRunsCoordinator
-from cvm_platform.application.agent_tracing import AgentRunTracer, NoOpAgentRunTracer
 from cvm_platform.application.dto import (
     AgentRunRecord,
     AuditLogRecord,
@@ -27,7 +26,6 @@ from cvm_platform.domain.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
-from cvm_platform.domain.ports import LLMPort, ResumeSourcePort
 from cvm_platform.domain.types import (
     AgentRunFailureCountPayload,
     AgentRunConfigPayload,
@@ -45,20 +43,12 @@ class PlatformService:
         self,
         uow: PlatformUnitOfWork,
         runtime_config: PlatformRuntimeConfig,
-        llm: LLMPort,
-        resume_source: ResumeSourcePort,
-        agent_run_tracer: AgentRunTracer | None = None,
     ) -> None:
         self.uow = uow
         self.runtime_config = runtime_config
-        self.llm = llm
-        self.resume_source = resume_source
         self.agent_runs = AgentRunsCoordinator(
             uow=uow,
             runtime_config=runtime_config,
-            llm=llm,
-            resume_source=resume_source,
-            tracer=agent_run_tracer or NoOpAgentRunTracer(),
         )
 
     def create_case(self, title: str, owner_team_id: str) -> CaseRecord:
@@ -110,7 +100,7 @@ class PlatformService:
         return self.agent_runs.create_run(
             jd_text=jd_text,
             sourcing_preference_text=sourcing_preference_text,
-            model_version=model_version or self.runtime_config.default_llm_model,
+            model_version=model_version or self.runtime_config.default_agent_model,
             prompt_version=prompt_version or self.runtime_config.default_agent_prompt_version,
             idempotency_key=idempotency_key or new_id("agentreq"),
             config=config,
@@ -124,9 +114,6 @@ class PlatformService:
 
     def fail_agent_run_dispatch(self, run_id: str, error_code: str, error_message: str) -> AgentRunRecord:
         return self.agent_runs.fail_dispatch(run_id, error_code=error_code, error_message=error_message)
-
-    def execute_agent_run(self, run_id: str) -> AgentRunRecord:
-        return self.agent_runs.execute_run(run_id)
 
     def get_candidate_detail(self, candidate_id: str) -> CandidateDetailRecord:
         candidate = self._get_candidate(candidate_id)

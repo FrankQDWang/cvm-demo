@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from cvm_platform.infrastructure.adapters import MisconfiguredLLMAdapter
 from tests.support.api_harness import build_test_client, close_test_client
 from tests.support.flow import read_json
 
@@ -32,11 +31,7 @@ def test_missing_resources_return_not_found_envelope(client, method: str, path: 
 
 
 def test_jd_version_creation_still_works_with_explicit_case(tmp_path, monkeypatch) -> None:
-    client = build_test_client(
-        tmp_path,
-        monkeypatch,
-        llm=MisconfiguredLLMAdapter("OPENAI_API_KEY is required when CVM_LLM_MODE is not stub."),
-    )
+    client = build_test_client(tmp_path, monkeypatch)
     try:
         case = read_json(client.post("/api/v1/cases", json={"title": "AI Native Recruiter", "ownerTeamId": "team-cn"}))
         version = read_json(client.post(

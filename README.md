@@ -12,7 +12,7 @@ make up
 
 - `User Web` 现在只保留一个最小闭环页面：输入 `JD` 与 `寻访偏好`，一次启动，返回最终 Top 5 shortlist。
 - `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET` 和 `OPENAI_API_KEY`；自托管 Langfuse 的本地凭据和初始化参数已经一并给出默认值。
-- `API` 和 `worker` 在本地运行时默认按 `CVM_LLM_MODE=live` 调用 OpenAI `Responses API`；自动化测试与 CI 不读取这些 mode 作为判定依据，而是显式切到 deterministic `mock + stub`。
+- `API` 和 `worker` 在本地运行时默认按 `CVM_AGENT_PROFILE=live` 调用 OpenAI；如果未提供 `OPENAI_API_KEY`，启动会直接失败。自动化测试与 CI 不依赖本地 `.env`，而是显式切到 deterministic profile。
 - `Agent Run` 现在默认且唯一通过 `Temporal` 执行，不再支持旧的多步检索链。
 - `Temporal` 可见性现在默认走 `OpenSearch-backed advanced visibility`；判断 `Temporal UI` 前，先执行显式重建命令。
 
@@ -37,12 +37,12 @@ make up
 - User web lives in `apps/web-user`, monitoring web in `apps/web-ops`, and `http://127.0.0.1:4202` is a self-hosted Langfuse UI rather than a separate Angular eval app.
 - `docker compose` now starts the full local stack: `postgres`, `opensearch`, `temporal`, `temporal-ui`, `temporal-admin-tools`, `langfuse-postgres`, `langfuse-clickhouse`, `langfuse-minio`, `langfuse-redis`, `langfuse-worker`, `web-evals` (Langfuse web), `api`, `worker`, `web-user`, and `web-ops`.
 - Manual host-mode development is available with `make dev-api`, `make dev-worker`, `make dev-web-user`, `make dev-web-ops`, and `make dev-web-evals`; the last one starts the self-hosted Langfuse containers.
-- 真实运行时配置从 `.env` 读取；自动化 stack tests 和 CI 会显式覆盖为 deterministic `mock + stub`，不依赖 `.env` 中的 mode 配置。
+- 真实运行时配置从 `.env` 读取；自动化 stack tests 和 CI 会显式覆盖为 deterministic profile，不依赖 `.env` 中的 live 配置。
 
 ## CI
 
 - `validate` is the only PR-blocking workflow; the intended required checks remain `validate-static`, `validate-contracts`, `test`, and `test-stack`.
-- `test-stack` and `nightly-regression` pin stack-backed jobs to `CVM_RESUME_SOURCE_MODE=mock` and `CVM_LLM_MODE=stub`, so CI does not depend on live CTS or OpenAI behavior.
+- `test-stack` and `nightly-regression` pin stack-backed jobs to `CVM_RESUME_SOURCE_MODE=mock` and `CVM_AGENT_PROFILE=deterministic`, so CI does not depend on live CTS or OpenAI behavior.
 - `nightly-regression` runs the stack-backed `make eval-critical` gate and `make temporal-visibility-smoke`.
 - `build-verify` runs `make verify-images` to prove the runtime Docker images still build from the checked-in lockfiles and Dockerfiles.
 
@@ -65,7 +65,7 @@ make down
 - `make rebuild-temporal-stack` force-recreates `opensearch + temporal + temporal-ui + temporal-admin-tools`; use it after changing Temporal/OpenSearch config.
 - `make temporal-visibility-smoke` creates a smoke `AgentRun` and checks Temporal execution, visibility index, and UI count together.
 - `make test` is deterministic and does not require a pre-started local stack.
-- `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke` now self-manage an isolated deterministic compose stack with `mock + stub`; they do not consume `.env` 中的 LLM / CTS mode.
+- `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke` now self-manage an isolated deterministic compose stack with `mock + deterministic profile`; they do not consume `.env` 中的 live agent / CTS settings.
 - If you intentionally want to point these commands at an already running stack, set `CVM_EXTERNAL_STACK=1`.
 - `make verify-images` validates that `api`, `worker`, `web-user`, and `web-ops` Docker images still build from the current worktree, and pulls the self-hosted Langfuse runtime images used by `web-evals`.
 - `make up` and `make status` both print copyable local URLs after execution.

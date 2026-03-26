@@ -4,12 +4,19 @@ import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from pydantic_ai.durable_exec.temporal import PydanticAIPlugin
 from temporalio.client import Client
 from temporalio.worker import Worker
 
 from cvm_platform.infrastructure.db import initialize_database
 from cvm_platform.settings.config import settings
-from cvm_worker.workflows import AgentRunWorkflow, execute_agent_run
+from cvm_worker.activities import (
+    cts_search_candidates,
+    load_agent_run_snapshot,
+    persist_agent_run_patch,
+    publish_langfuse_trace,
+)
+from cvm_worker.workflows import AgentRunWorkflow
 
 
 logger = logging.getLogger("cvm.worker.startup")
@@ -17,21 +24,38 @@ logger = logging.getLogger("cvm.worker.startup")
 
 async def run_worker() -> None:
     initialize_database()
+    if settings.agent_profile.lower() == "live" and not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live.")
     logger.info(
-        "Worker runtime ready build_id=%s temporal_namespace=%s temporal_visibility_backend=%s temporal_task_queue=%s",
+        "Worker runtime ready build_id=%s temporal_namespace=%s temporal_visibility_backend=%s temporal_task_queue=%s agent_profile=%s agent_model=%s agent_min_rounds=%s agent_max_rounds=%s",
         settings.build_id,
         settings.temporal_namespace,
         settings.temporal_visibility_backend,
         settings.temporal_task_queue,
+        settings.agent_profile,
+        settings.agent_model,
+        settings.agent_min_rounds,
+        settings.agent_max_rounds,
     )
-    client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
-    activity_executor = ThreadPoolExecutor(max_workers=4)
+    plugin = PydanticAIPlugin()
+    client = await Client.connect(
+        settings.temporal_host,
+        namespace=settings.temporal_namespace,
+        plugins=[plugin],
+    )
+    activity_executor = ThreadPoolExecutor(max_workers=8)
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
         workflows=[AgentRunWorkflow],
-        activities=[execute_agent_run],
+        activities=[
+            load_agent_run_snapshot,
+            persist_agent_run_patch,
+            cts_search_candidates,
+            publish_langfuse_trace,
+        ],
         activity_executor=activity_executor,
+        plugins=[plugin],
     )
     await worker.run()
 
