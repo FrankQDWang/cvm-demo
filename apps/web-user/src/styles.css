@@ -1,17 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   color-scheme: light;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Inter', sans-serif;
+  --page-bg: #f7f7f5;
+  --surface: #ffffff;
+  --line: rgba(17, 24, 39, 0.08);
+  --line-strong: rgba(17, 24, 39, 0.14);
+  --text: #1a1d23;
+  --text-soft: #535964;
+  --text-muted: #7b818c;
+  --button: #17191f;
+  --button-hover: #111319;
+  --danger: #c23b52;
+  --shadow: 0 20px 48px rgba(17, 24, 39, 0.06);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+  color: var(--text);
+  background: var(--page-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -19,4 +40,13 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: rgba(17, 24, 39, 0.14);
+  color: var(--text);
 }

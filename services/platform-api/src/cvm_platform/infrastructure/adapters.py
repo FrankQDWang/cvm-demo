@@ -15,13 +15,17 @@ from cvm_platform.domain.errors import (
     ValidationError,
 )
 from cvm_platform.domain.types import (
+    AgentSearchStrategyData,
     CandidateData,
     ConditionPlanDraftData,
     EvidenceRef,
     JsonObject,
     NormalizedQueryPayload,
+    ResumeMatchData,
     ResumeEducationItemPayload,
     ResumeProjectionPayload,
+    SearchReflectionData,
+    SearchQueryPayload,
     ResumeWorkExperienceItemPayload,
     SearchPageData,
     StructuredFiltersPayload,
@@ -33,8 +37,11 @@ from .boundary_models import (
     CtsCandidateModel,
     CtsRequestModel,
     CtsSearchResponseModel,
+    OpenAIAgentSearchStrategyModel,
     OpenAIKeywordDraftModel,
+    OpenAIResumeMatchModel,
     OpenAIResponsesEnvelopeModel,
+    OpenAISearchReflectionModel,
     StructuredFiltersBoundaryModel,
 )
 from .mock_catalog import MOCK_CANDIDATES, MockCandidatePayload
@@ -77,6 +84,85 @@ def _dump_structured_filters(model: StructuredFiltersBoundaryModel) -> Structure
     return cast(StructuredFiltersPayload, cast(object, model.model_dump(exclude_none=True)))
 
 
+def _dump_search_query(
+    *,
+    keyword: str,
+    must_terms: list[str],
+    should_terms: list[str],
+    exclude_terms: list[str],
+    structured_filters: StructuredFiltersBoundaryModel,
+) -> SearchQueryPayload:
+    normalized_must_terms = [term.strip() for term in must_terms[:4] if term.strip()]
+    return {
+        "keyword": keyword.strip(),
+        "mustTerms": normalized_must_terms,
+        "shouldTerms": [
+            term.strip()
+            for term in should_terms[:6]
+            if term.strip() and term.strip() not in normalized_must_terms
+        ],
+        "excludeTerms": [term.strip() for term in exclude_terms[:4] if term.strip()],
+        "structuredFilters": _dump_structured_filters(structured_filters),
+    }
+
+
+def _candidate_haystack(candidate: CandidateData) -> str:
+    projection = candidate.resume_projection
+    return " ".join(
+        [
+            candidate.name,
+            candidate.title,
+            candidate.company,
+            candidate.location,
+            candidate.summary,
+            " ".join(projection["workSummaries"]),
+            " ".join(projection["projectNames"]),
+            " ".join(
+                f"{item['company']} {item['title']} {item['summary'] or ''}"
+                for item in projection["workExperience"]
+            ),
+            " ".join(f"{item['school']} {item['degree']} {item['major']}" for item in projection["education"]),
+        ]
+    ).lower()
+
+
+def _heuristic_resume_match_data(
+    *,
+    candidate: CandidateData,
+    strategy: NormalizedQueryPayload,
+    model_version: str,
+    prompt_version: str,
+) -> ResumeMatchData:
+    haystack = _candidate_haystack(candidate)
+    must_hits = [term for term in strategy["mustTerms"] if term.lower() in haystack]
+    should_hits = [term for term in strategy["shouldTerms"] if term.lower() in haystack]
+    exclude_hits = [term for term in strategy["excludeTerms"] if term.lower() in haystack]
+    score = 0.35
+    if strategy["mustTerms"]:
+        score += 0.35 * (len(must_hits) / max(len(strategy["mustTerms"]), 1))
+    if strategy["shouldTerms"]:
+        score += 0.2 * (len(should_hits) / max(len(strategy["shouldTerms"]), 1))
+    if exclude_hits:
+        score -= 0.25
+    score = max(0.0, min(score, 0.99))
+    reasons: list[str] = []
+    if must_hits:
+        reasons.append(f"命中必须项：{', '.join(must_hits[:3])}")
+    if should_hits:
+        reasons.append(f"命中核心项：{', '.join(should_hits[:3])}")
+    if not reasons:
+        reasons.append("与目标岗位存在较强相关性")
+    return ResumeMatchData(
+        prompt_text="heuristic-resume-match",
+        model_version=model_version,
+        prompt_version=prompt_version,
+        score=score,
+        summary="；".join(reasons),
+        evidence=must_hits[:3] + should_hits[:2],
+        concerns=[f"命中排除词：{term}" for term in exclude_hits[:2]],
+    )
+
+
 class StubLLMAdapter:
     def draft_keywords(
         self,
@@ -84,6 +170,7 @@ class StubLLMAdapter:
         model_version: str,
         prompt_version: str,
     ) -> ConditionPlanDraftData:
+        del model_version, prompt_version
         must_terms: list[str] = []
         should_terms: list[str] = []
 
@@ -157,6 +244,107 @@ class StubLLMAdapter:
             evidence_refs=evidence_refs,
         )
 
+    def extract_agent_search_strategy(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> AgentSearchStrategyData:
+        draft = self.draft_keywords(f"{jd_text}\n{sourcing_preference_text}", model_version, prompt_version)
+        keyword = " ".join(draft.must_terms + draft.should_terms).strip() or draft.must_terms[0]
+        round_1_filters = StructuredFiltersBoundaryModel.model_validate(
+            {
+                key: value
+                for key, value in draft.structured_filters.items()
+                if key in {"page", "pageSize", "location", "position", "company", "school"}
+            }
+            or {"page": 1, "pageSize": 10}
+        )
+        return AgentSearchStrategyData(
+            prompt_text="中文启发式首轮检索计划",
+            model_version=model_version,
+            prompt_version=prompt_version,
+            must_requirements=draft.must_terms[:4],
+            core_requirements=draft.should_terms[:4],
+            bonus_requirements=draft.should_terms[4:6],
+            exclude_signals=draft.exclude_terms[:4],
+            round_1_query=_dump_search_query(
+                keyword=keyword,
+                must_terms=draft.must_terms,
+                should_terms=draft.should_terms,
+                exclude_terms=draft.exclude_terms,
+                structured_filters=round_1_filters,
+            ),
+            summary=f"已提炼出 {len(draft.must_terms)} 个必须项，并为首轮 CTS 生成宽召回查询。",
+        )
+
+    def analyze_resume_match(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        candidate: CandidateData,
+        model_version: str,
+        prompt_version: str,
+    ) -> ResumeMatchData:
+        del jd_text, sourcing_preference_text
+        return _heuristic_resume_match_data(
+            candidate=candidate,
+            strategy=strategy,
+            model_version=model_version,
+            prompt_version=prompt_version,
+        )
+
+    def reflect_search_progress(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        round_ledger: list[dict[str, object]],
+        round_no: int,
+        max_rounds: int,
+        new_candidate_count: int,
+        seen_candidate_count: int,
+        model_version: str,
+        prompt_version: str,
+    ) -> SearchReflectionData:
+        del jd_text, sourcing_preference_text, round_ledger, seen_candidate_count
+        keyword = strategy["keyword"]
+        must_terms = list(strategy["mustTerms"])
+        should_terms = list(strategy["shouldTerms"])
+        filters = dict(strategy["structuredFilters"])
+        reason = "继续沿当前方向检索更多未见候选。"
+        next_round_goal = "补充更多可供排序的新候选。"
+        continue_search = round_no < max_rounds
+        if new_candidate_count == 0 and should_terms:
+            dropped_term = should_terms[-1]
+            should_terms = should_terms[:-1]
+            keyword = " ".join(must_terms + should_terms).strip() or keyword
+            reason = f"上一轮没有新增候选，先去掉较弱核心词“{dropped_term}”，尝试放宽召回。"
+            next_round_goal = "在保持岗位主轴不变的前提下扩大召回。"
+            for filter_key in ["schoolType", "workExperienceRange", "degree"]:
+                filters.pop(filter_key, None)
+        elif new_candidate_count == 0 and round_no + 1 >= max_rounds:
+            continue_search = False
+            reason = "靠近轮次上限且没有新增候选，建议停止检索。"
+            next_round_goal = "停止并输出当前 shortlist。"
+        return SearchReflectionData(
+            prompt_text="中文启发式轮次反思",
+            model_version=model_version,
+            prompt_version=prompt_version,
+            continue_search=continue_search,
+            reason=reason,
+            next_round_goal=next_round_goal,
+            next_round_query={
+                "keyword": keyword,
+                "mustTerms": must_terms,
+                "shouldTerms": should_terms,
+                "excludeTerms": list(strategy["excludeTerms"]),
+                "structuredFilters": cast(StructuredFiltersPayload, cast(object, filters)),
+            },
+        )
+
 
 class MisconfiguredLLMAdapter:
     def __init__(self, message: str) -> None:
@@ -168,6 +356,56 @@ class MisconfiguredLLMAdapter:
         model_version: str,
         prompt_version: str,
     ) -> ConditionPlanDraftData:
+        del jd_text, model_version, prompt_version
+        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
+
+    def extract_agent_search_strategy(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> AgentSearchStrategyData:
+        del jd_text, sourcing_preference_text, model_version, prompt_version
+        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
+
+    def analyze_resume_match(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        candidate: CandidateData,
+        model_version: str,
+        prompt_version: str,
+    ) -> ResumeMatchData:
+        del jd_text, sourcing_preference_text, strategy, candidate, model_version, prompt_version
+        raise ValidationError("LLM_NOT_CONFIGURED", self.message)
+
+    def reflect_search_progress(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        round_ledger: list[dict[str, object]],
+        round_no: int,
+        max_rounds: int,
+        new_candidate_count: int,
+        seen_candidate_count: int,
+        model_version: str,
+        prompt_version: str,
+    ) -> SearchReflectionData:
+        del (
+            jd_text,
+            sourcing_preference_text,
+            strategy,
+            round_ledger,
+            round_no,
+            max_rounds,
+            new_candidate_count,
+            seen_candidate_count,
+            model_version,
+            prompt_version,
+        )
         raise ValidationError("LLM_NOT_CONFIGURED", self.message)
 
 
@@ -195,6 +433,94 @@ class OpenAILLMAdapter:
         )
         output_text = self._extract_output_text(response)
         return self._parse_draft(output_text)
+
+    def extract_agent_search_strategy(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> AgentSearchStrategyData:
+        resolved_model = self._resolve_model(model_version)
+        prompt = self._build_agent_search_strategy_prompt(
+            jd_text=jd_text,
+            sourcing_preference_text=sourcing_preference_text,
+            model_version=resolved_model,
+            prompt_version=prompt_version,
+        )
+        response = self._responses_request(
+            {
+                "model": resolved_model,
+                "input": prompt,
+                "max_output_tokens": 700,
+            }
+        )
+        output_text = self._extract_output_text(response)
+        return self._parse_agent_search_strategy(output_text, prompt, resolved_model, prompt_version)
+
+    def analyze_resume_match(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        candidate: CandidateData,
+        model_version: str,
+        prompt_version: str,
+    ) -> ResumeMatchData:
+        resolved_model = self._resolve_model(model_version)
+        prompt = self._build_resume_match_prompt(
+            jd_text=jd_text,
+            sourcing_preference_text=sourcing_preference_text,
+            strategy=strategy,
+            candidate=candidate,
+            model_version=resolved_model,
+            prompt_version=prompt_version,
+        )
+        response = self._responses_request(
+            {
+                "model": resolved_model,
+                "input": prompt,
+                "max_output_tokens": 800,
+            }
+        )
+        output_text = self._extract_output_text(response)
+        return self._parse_resume_match(output_text, prompt, resolved_model, prompt_version)
+
+    def reflect_search_progress(
+        self,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        round_ledger: list[dict[str, object]],
+        round_no: int,
+        max_rounds: int,
+        new_candidate_count: int,
+        seen_candidate_count: int,
+        model_version: str,
+        prompt_version: str,
+    ) -> SearchReflectionData:
+        resolved_model = self._resolve_model(model_version)
+        prompt = self._build_search_reflection_prompt(
+            jd_text=jd_text,
+            sourcing_preference_text=sourcing_preference_text,
+            strategy=strategy,
+            round_ledger=round_ledger,
+            round_no=round_no,
+            max_rounds=max_rounds,
+            new_candidate_count=new_candidate_count,
+            seen_candidate_count=seen_candidate_count,
+            model_version=resolved_model,
+            prompt_version=prompt_version,
+        )
+        response = self._responses_request(
+            {
+                "model": resolved_model,
+                "input": prompt,
+                "max_output_tokens": 700,
+            }
+        )
+        output_text = self._extract_output_text(response)
+        return self._parse_search_reflection(output_text, prompt, resolved_model, prompt_version)
 
     def _resolve_model(self, requested_model: str) -> str:
         model = requested_model.strip()
@@ -240,6 +566,197 @@ JD:
 {jd_text}
 """.strip()
 
+    @staticmethod
+    def _build_agent_search_strategy_prompt(
+        *,
+        jd_text: str,
+        sourcing_preference_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> str:
+        return f"""
+你是寻访 Agent 的首轮策略提取器。
+
+请直接返回 JSON，不要加 Markdown 代码块。JSON 必须严格匹配这个结构：
+{{
+  "must_requirements": ["必须条件短语"],
+  "core_requirements": ["核心能力短语"],
+  "bonus_requirements": ["加分项短语"],
+  "exclude_signals": ["排除信号短语"],
+  "round_1_query": {{
+    "keyword": "首轮 CTS 检索关键词",
+    "must_terms": ["首轮必须携带的检索词"],
+    "should_terms": ["首轮可携带的核心检索词"],
+    "exclude_terms": ["首轮排除词"],
+    "structured_filters": {{
+      "page": 1,
+      "pageSize": 10,
+      "location": ["上海"],
+      "degree": 2,
+      "schoolType": 3,
+      "workExperienceRange": 4,
+      "position": "算法工程师",
+      "workContent": "Agent Python"
+    }}
+  }},
+  "summary": "一句中文总结"
+}}
+
+规则：
+- 你要先理解职位真正需要的能力，再决定首轮 CTS 查询。
+- `must_requirements` 代表业务上不能缺失的要求，限制 1-6 个短语。
+- `core_requirements` 代表强相关核心能力，限制 0-8 个短语。
+- `bonus_requirements` 代表加分项，限制 0-8 个短语。
+- `exclude_signals` 代表明显不合适的信号，限制 0-6 个短语。
+- `round_1_query` 只服务首轮召回，不要把所有条件一次性压到最窄。
+- `keyword` 必须是会真正发给 CTS 的短检索串，不要写成句子。
+- `must_terms` 限制 1-4 个，`should_terms` 限制 0-6 个。
+- 只有在输入里有明确依据且确实适合 CTS 检索时，才填写 `structured_filters`。
+- `structured_filters` 只允许包含：page, pageSize, location, degree, schoolType, workExperienceRange, position, workContent, company, school。
+- 始终包含 `page=1` 和 `pageSize=10`。
+- 优先抽取真正影响寻访成败的岗位能力，不要被噪音描述带偏。
+
+model_version={model_version}
+prompt_version={prompt_version}
+
+JD:
+{jd_text}
+
+寻访偏好:
+{sourcing_preference_text}
+""".strip()
+
+    @staticmethod
+    def _build_resume_match_prompt(
+        *,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        candidate: CandidateData,
+        model_version: str,
+        prompt_version: str,
+    ) -> str:
+        return f"""
+你要判断一份简历是否应该留在 shortlist。
+
+请直接返回 JSON，不要加 Markdown 代码块。JSON 必须严格匹配这个结构：
+{{
+  "score": 0.0,
+  "summary": "一句中文总结，说明为什么该保留或淘汰",
+  "evidence": ["简短事实依据"],
+  "concerns": ["明确风险或缺口"]
+}}
+
+规则：
+- `score` 必须在 0 到 1 之间。
+- `summary` 必须是简洁中文，不要空话。
+- `evidence` 只能写来自候选人资料的短事实。
+- `concerns` 必须是明确缺口，不要写泛泛提醒。
+- 你的任务是帮助每轮从候选池里保留更强的 5 个，而不是生成长报告。
+
+model_version={model_version}
+prompt_version={prompt_version}
+
+JD:
+{jd_text}
+
+寻访偏好:
+{sourcing_preference_text}
+
+检索策略:
+{json.dumps(strategy, ensure_ascii=False, indent=2)}
+
+候选人资料:
+{json.dumps(
+    {
+        "externalIdentityId": candidate.external_identity_id,
+        "name": candidate.name,
+        "title": candidate.title,
+        "company": candidate.company,
+        "location": candidate.location,
+        "summary": candidate.summary,
+        "resumeProjection": candidate.resume_projection,
+    },
+    ensure_ascii=False,
+    indent=2,
+)}
+""".strip()
+
+    @staticmethod
+    def _build_search_reflection_prompt(
+        *,
+        jd_text: str,
+        sourcing_preference_text: str,
+        strategy: NormalizedQueryPayload,
+        round_ledger: list[dict[str, object]],
+        round_no: int,
+        max_rounds: int,
+        new_candidate_count: int,
+        seen_candidate_count: int,
+        model_version: str,
+        prompt_version: str,
+    ) -> str:
+        return f"""
+你是寻访 Agent 的轮次反思器。
+
+你会看到原始输入、当前查询和 append-only 的轮次账本。账本只追加，不能改写历史。
+
+请直接返回 JSON，不要加 Markdown 代码块。JSON 必须严格匹配这个结构：
+{{
+  "continue_search": true,
+  "reason": "一句中文解释为什么继续或停止",
+  "next_round_goal": "下一轮检索目标",
+  "next_round_query": {{
+    "keyword": "下一轮 CTS 检索关键词",
+    "must_terms": ["下一轮必须携带的检索词"],
+    "should_terms": ["下一轮可携带的检索词"],
+    "exclude_terms": ["下一轮排除词"],
+    "structured_filters": {{
+      "page": 1,
+      "pageSize": 10,
+      "location": ["上海"],
+      "degree": 2,
+      "schoolType": 3,
+      "workExperienceRange": 4,
+      "position": "算法工程师",
+      "workContent": "Agent Python"
+    }}
+  }}
+}}
+
+规则：
+- 你只能调整下一轮 CTS 查询，不能发明新工具或新流程阶段。
+- 历史账本是 append-only 的，只能在它的基础上做判断。
+- 如果本轮没有新增候选、重复过多、或候选质量明显不够，应优先考虑放宽或改写查询方向，而不是机械继续收紧。
+- 如果当前 top 5 已经足够强，或继续搜索价值很低，可以设置 `continue_search=false`。
+- `next_round_query` 只服务下一轮，不要试图一次性解决所有约束。
+- `keyword` 必须是短检索串，不要写成句子。
+- `must_terms` 限制 1-4 个，`should_terms` 限制 0-6 个。
+- `structured_filters` 只允许包含：page, pageSize, location, degree, schoolType, workExperienceRange, position, workContent, company, school。
+- 始终包含 `page=1` 和 `pageSize=10`。
+
+model_version={model_version}
+prompt_version={prompt_version}
+
+当前轮次状态：
+- round_no={round_no}
+- max_rounds={max_rounds}
+- new_candidate_count={new_candidate_count}
+- seen_candidate_count={seen_candidate_count}
+
+JD:
+{jd_text}
+
+寻访偏好:
+{sourcing_preference_text}
+
+当前查询:
+{json.dumps(strategy, ensure_ascii=False, indent=2)}
+
+轮次账本:
+{json.dumps(round_ledger, ensure_ascii=False, indent=2)}
+""".strip()
+
     def _responses_request(self, payload: JsonObject) -> OpenAIResponsesEnvelopeModel:
         req = urllib_request.Request(
             f"{self.base_url}/responses",
@@ -253,6 +770,11 @@ JD:
         try:
             with urllib_request.urlopen(req, timeout=self.timeout_seconds) as resp:
                 body = resp.read().decode("utf-8")
+        except TimeoutError as exc:
+            raise TransientDependencyError(
+                "OPENAI_TIMEOUT",
+                "OpenAI request timed out.",
+            ) from exc
         except urllib_error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             if 500 <= exc.code < 600:
@@ -293,7 +815,8 @@ JD:
             )
         return "\n".join(text_parts)
 
-    def _parse_draft(self, raw_text: str) -> ConditionPlanDraftData:
+    @staticmethod
+    def _extract_json_payload(raw_text: str) -> JsonObject:
         cleaned = raw_text.strip()
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*```$", "", cleaned)
@@ -307,12 +830,20 @@ JD:
 
         try:
             payload_json = json.loads(cleaned[start : end + 1])
-            draft = OpenAIKeywordDraftModel.model_validate(payload_json)
         except (JSONDecodeError, ValueError) as exc:
             raise ExternalDependencyError(
                 "OPENAI_RESPONSE_INVALID",
-                "OpenAI keyword draft did not match the required schema.",
+                "OpenAI response did not match the required JSON schema.",
             ) from exc
+        if not isinstance(payload_json, dict):
+            raise ExternalDependencyError(
+                "OPENAI_RESPONSE_INVALID",
+                "OpenAI response JSON must be an object.",
+            )
+        return to_json_object(cast(object, payload_json))
+
+    def _parse_draft(self, raw_text: str) -> ConditionPlanDraftData:
+        draft = OpenAIKeywordDraftModel.model_validate(self._extract_json_payload(raw_text))
 
         filters = StructuredFiltersBoundaryModel.model_validate(
             draft.structured_filters.model_dump(exclude_none=True)
@@ -326,6 +857,81 @@ JD:
                 EvidenceRef(label=ref.label, excerpt=ref.excerpt)
                 for ref in draft.evidence_refs[:4]
             ],
+        )
+
+    def _parse_agent_search_strategy(
+        self,
+        raw_text: str,
+        prompt_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> AgentSearchStrategyData:
+        payload = OpenAIAgentSearchStrategyModel.model_validate(self._extract_json_payload(raw_text))
+        round_1_filters = StructuredFiltersBoundaryModel.model_validate(
+            payload.round_1_query.structured_filters.model_dump(exclude_none=True)
+        )
+        return AgentSearchStrategyData(
+            prompt_text=prompt_text,
+            model_version=model_version,
+            prompt_version=prompt_version,
+            must_requirements=[term.strip() for term in payload.must_requirements[:6] if term.strip()],
+            core_requirements=[term.strip() for term in payload.core_requirements[:8] if term.strip()],
+            bonus_requirements=[term.strip() for term in payload.bonus_requirements[:8] if term.strip()],
+            exclude_signals=[term.strip() for term in payload.exclude_signals[:6] if term.strip()],
+            round_1_query=_dump_search_query(
+                keyword=payload.round_1_query.keyword,
+                must_terms=payload.round_1_query.must_terms,
+                should_terms=payload.round_1_query.should_terms,
+                exclude_terms=payload.round_1_query.exclude_terms,
+                structured_filters=round_1_filters,
+            ),
+            summary=payload.summary.strip(),
+        )
+
+    def _parse_resume_match(
+        self,
+        raw_text: str,
+        prompt_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> ResumeMatchData:
+        payload = OpenAIResumeMatchModel.model_validate(self._extract_json_payload(raw_text))
+        score = max(0.0, min(payload.score, 0.99))
+        return ResumeMatchData(
+            prompt_text=prompt_text,
+            model_version=model_version,
+            prompt_version=prompt_version,
+            score=score,
+            summary=payload.summary.strip(),
+            evidence=[item.strip() for item in payload.evidence[:5] if item.strip()],
+            concerns=[item.strip() for item in payload.concerns[:5] if item.strip()],
+        )
+
+    def _parse_search_reflection(
+        self,
+        raw_text: str,
+        prompt_text: str,
+        model_version: str,
+        prompt_version: str,
+    ) -> SearchReflectionData:
+        payload = OpenAISearchReflectionModel.model_validate(self._extract_json_payload(raw_text))
+        next_round_filters = StructuredFiltersBoundaryModel.model_validate(
+            payload.next_round_query.structured_filters.model_dump(exclude_none=True)
+        )
+        return SearchReflectionData(
+            prompt_text=prompt_text,
+            model_version=model_version,
+            prompt_version=prompt_version,
+            continue_search=payload.continue_search,
+            reason=payload.reason.strip(),
+            next_round_goal=payload.next_round_goal.strip(),
+            next_round_query=_dump_search_query(
+                keyword=payload.next_round_query.keyword,
+                must_terms=payload.next_round_query.must_terms,
+                should_terms=payload.next_round_query.should_terms,
+                exclude_terms=payload.next_round_query.exclude_terms,
+                structured_filters=next_round_filters,
+            ),
         )
 
 

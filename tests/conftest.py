@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
 
@@ -17,6 +19,10 @@ def client(tmp_path, monkeypatch) -> httpx.Client:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    os.environ["CVM_LANGFUSE_PUBLIC_KEY"] = ""
+    os.environ["CVM_LANGFUSE_SECRET_KEY"] = ""
+    os.environ["CVM_LANGFUSE_HOST"] = ""
+    os.environ["CVM_LANGFUSE_BASE_URL"] = ""
     config.addinivalue_line("markers", "stack: requires the docker-compose-backed local stack")
 
 

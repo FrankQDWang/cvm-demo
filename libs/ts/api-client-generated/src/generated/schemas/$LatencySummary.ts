@@ -4,7 +4,7 @@
 /* eslint-disable */
 export const $LatencySummary = {
     properties: {
-        avgSearchRunSeconds: {
+        avgAgentRunSeconds: {
             type: 'number',
             isRequired: true,
         },

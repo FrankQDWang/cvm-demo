@@ -6,9 +6,6 @@ const config = {
     'apps/web-ops': {
       project: ['src/**/*.ts', 'src/**/*.html'],
     },
-    'apps/web-evals': {
-      project: ['src/**/*.ts', 'src/**/*.html'],
-    },
     'libs/ts/platform-api-client': {
       project: ['src/**/*.ts'],
     },

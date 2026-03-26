@@ -7,33 +7,27 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cvm_platform.application.dto import (
+    AgentRunRecord,
     AuditLogRecord,
     CandidateRecord,
     CaseRecord,
-    ConditionPlanRecord,
     EvalRunRecord,
     ExportJobRecord,
     JDVersionRecord,
-    KeywordDraftJobRecord,
     ResumeAnalysisRecord,
     ResumeSnapshotRecord,
-    SearchRunPageRecord,
-    SearchRunRecord,
     VerdictHistoryRecord,
 )
 from cvm_platform.infrastructure.models import (
+    AgentRunModel,
     AuditLogModel,
     CaseCandidateModel,
-    ConditionPlanModel,
     EvalRunModel,
     ExportJobModel,
     JDCaseModel,
     JDVersionModel,
-    KeywordDraftJobModel,
     ResumeAnalysisJobModel,
     ResumeSnapshotModel,
-    SearchRunModel,
-    SearchRunPageModel,
     VerdictHistoryModel,
 )
 
@@ -107,54 +101,39 @@ class SqlAlchemyPlansRepository:
     def save_jd_version(self, jd_version: JDVersionRecord) -> JDVersionRecord:
         return _save_record(self.session, JDVersionModel, jd_version)
 
-    def save_keyword_draft_job(self, job: KeywordDraftJobRecord) -> KeywordDraftJobRecord:
-        return _save_record(self.session, KeywordDraftJobModel, job)
 
-    def get_plan(self, plan_id: str) -> ConditionPlanRecord | None:
-        model = self.session.get(ConditionPlanModel, plan_id)
-        return None if model is None else _to_record(ConditionPlanRecord, model)
-
-    def save_plan(self, plan: ConditionPlanRecord) -> ConditionPlanRecord:
-        return _save_record(self.session, ConditionPlanModel, plan)
-
-
-class SqlAlchemySearchRunsRepository:
+class SqlAlchemyAgentRunsRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def find_by_idempotency_key(self, idempotency_key: str) -> SearchRunRecord | None:
-        model = self.session.scalar(select(SearchRunModel).where(SearchRunModel.idempotency_key == idempotency_key))
-        return None if model is None else _to_record(SearchRunRecord, model)
+    def find_by_idempotency_key(self, idempotency_key: str) -> AgentRunRecord | None:
+        model = self.session.scalar(select(AgentRunModel).where(AgentRunModel.idempotency_key == idempotency_key))
+        return None if model is None else _to_record(AgentRunRecord, model)
 
-    def get_run(self, run_id: str) -> SearchRunRecord | None:
-        model = self.session.get(SearchRunModel, run_id)
-        return None if model is None else _to_record(SearchRunRecord, model)
+    def get_run(self, run_id: str) -> AgentRunRecord | None:
+        model = self.session.get(AgentRunModel, run_id)
+        return None if model is None else _to_record(AgentRunRecord, model)
 
-    def save_run(self, run: SearchRunRecord) -> SearchRunRecord:
-        return _save_record(self.session, SearchRunModel, run)
+    def save_run(self, run: AgentRunRecord) -> AgentRunRecord:
+        return _save_record(self.session, AgentRunModel, run)
 
-    def list_pages(self, run_id: str, page_no: int | None = None) -> list[SearchRunPageRecord]:
-        statement = select(SearchRunPageModel).where(SearchRunPageModel.run_id == run_id).order_by(SearchRunPageModel.page_no)
-        if page_no is not None:
-            statement = statement.where(SearchRunPageModel.page_no == page_no)
-        return [_to_record(SearchRunPageRecord, model) for model in self.session.scalars(statement)]
-
-    def save_page(self, page: SearchRunPageRecord) -> SearchRunPageRecord:
-        return _save_record(self.session, SearchRunPageModel, page)
+    def list_runs(self) -> list[AgentRunRecord]:
+        statement = select(AgentRunModel).order_by(AgentRunModel.created_at.desc())
+        return [_to_record(AgentRunRecord, model) for model in self.session.scalars(statement)]
 
     def count_by_status(self) -> dict[str, int]:
-        rows = self.session.execute(select(SearchRunModel.status, func.count()).group_by(SearchRunModel.status)).all()
+        rows = self.session.execute(select(AgentRunModel.status, func.count()).group_by(AgentRunModel.status)).all()
         return {str(status): int(count) for status, count in rows}
 
     def count_failures_by_error_code(self) -> dict[str | None, int]:
         rows = self.session.execute(
-            select(SearchRunModel.error_code, func.count()).group_by(SearchRunModel.error_code)
+            select(AgentRunModel.error_code, func.count()).group_by(AgentRunModel.error_code)
         ).all()
         return {error_code: int(count) for error_code, count in rows}
 
-    def list_finished_runs(self) -> list[SearchRunRecord]:
-        statement = select(SearchRunModel).where(SearchRunModel.finished_at.is_not(None))
-        return [_to_record(SearchRunRecord, model) for model in self.session.scalars(statement)]
+    def list_finished_runs(self) -> list[AgentRunRecord]:
+        statement = select(AgentRunModel).where(AgentRunModel.finished_at.is_not(None))
+        return [_to_record(AgentRunRecord, model) for model in self.session.scalars(statement)]
 
 
 class SqlAlchemyCandidatesRepository:
@@ -259,7 +238,7 @@ class SqlAlchemyPlatformUnitOfWork:
         self.session = session
         self.cases = SqlAlchemyCasesRepository(session)
         self.plans = SqlAlchemyPlansRepository(session)
-        self.search_runs = SqlAlchemySearchRunsRepository(session)
+        self.agent_runs = SqlAlchemyAgentRunsRepository(session)
         self.candidates = SqlAlchemyCandidatesRepository(session)
         self.exports = SqlAlchemyExportsRepository(session)
         self.eval_runs = SqlAlchemyEvalRunsRepository(session)

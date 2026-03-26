@@ -89,6 +89,117 @@ services:
     command:
       - tail -f /dev/null
 
+  langfuse-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${CVM_LANGFUSE_POSTGRES_USER:-langfuse}
+      POSTGRES_PASSWORD: ${CVM_LANGFUSE_POSTGRES_PASSWORD:-langfuse}
+      POSTGRES_DB: ${CVM_LANGFUSE_POSTGRES_DB:-langfuse}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${CVM_LANGFUSE_POSTGRES_USER:-langfuse} -d ${CVM_LANGFUSE_POSTGRES_DB:-langfuse}
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CVM_LANGFUSE_CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CVM_LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 2s
+
+  langfuse-minio:
+    image: cgr.dev/chainguard/minio
+    entrypoint: sh
+    command: -c 'mkdir -p /data/${CVM_LANGFUSE_S3_BUCKET:-langfuse} && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: ${CVM_LANGFUSE_MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${CVM_LANGFUSE_MINIO_ROOT_PASSWORD:-miniosecret}
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
+
+  langfuse-redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --requirepass ${CVM_LANGFUSE_REDIS_AUTH:-myredissecret}
+      --maxmemory-policy noeviction
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a ${CVM_LANGFUSE_REDIS_AUTH:-myredissecret} ping | grep PONG
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    depends_on: &langfuse_depends_on
+      langfuse-postgres:
+        condition: service_healthy
+      langfuse-minio:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      langfuse-clickhouse:
+        condition: service_healthy
+    environment: &langfuse_common_env
+      NEXTAUTH_URL: http://127.0.0.1:${CVM_EVALS_WEB_PORT:-4202}
+      DATABASE_URL: postgresql://${CVM_LANGFUSE_POSTGRES_USER:-langfuse}:${CVM_LANGFUSE_POSTGRES_PASSWORD:-langfuse}@langfuse-postgres:5432/${CVM_LANGFUSE_POSTGRES_DB:-langfuse}
+      SALT: ${CVM_LANGFUSE_SALT:-cvm-local-langfuse-salt}
+      ENCRYPTION_KEY: ${CVM_LANGFUSE_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      TELEMETRY_ENABLED: ${CVM_LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: ${CVM_LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: ${CVM_LANGFUSE_CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CVM_LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_USE_AZURE_BLOB: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: ${CVM_LANGFUSE_S3_BUCKET:-langfuse}
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${CVM_LANGFUSE_MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${CVM_LANGFUSE_MINIO_ROOT_PASSWORD:-miniosecret}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: ${CVM_LANGFUSE_S3_BUCKET:-langfuse}
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${CVM_LANGFUSE_MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${CVM_LANGFUSE_MINIO_ROOT_PASSWORD:-miniosecret}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ${CVM_LANGFUSE_REDIS_AUTH:-myredissecret}
+      REDIS_TLS_ENABLED: "false"
+
   api:
     build:
       context: .
@@ -104,7 +215,7 @@ services:
       CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
       CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
       CVM_TEMPORAL_HOST: temporal:7233
-      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-search-runs}
+      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-agent-runs}
       CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
       CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
       CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
@@ -115,6 +226,11 @@ services:
       CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      CVM_LANGFUSE_PUBLIC_KEY: ${CVM_LANGFUSE_PUBLIC_KEY-pk-lf-local-cvm}
+      CVM_LANGFUSE_SECRET_KEY: ${CVM_LANGFUSE_SECRET_KEY-sk-lf-local-cvm}
+      CVM_LANGFUSE_HOST: ${CVM_LANGFUSE_DOCKER_HOST-http://web-evals:3000}
+      CVM_LANGFUSE_BASE_URL: ${CVM_LANGFUSE_BASE_URL-http://127.0.0.1:4202}
+      CVM_LANGFUSE_ENVIRONMENT: ${CVM_LANGFUSE_ENVIRONMENT:-local}
       CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-cts}
       CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
       CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
@@ -122,7 +238,7 @@ services:
       CVM_CTS_TIMEOUT_SECONDS: ${CVM_CTS_TIMEOUT_SECONDS:-20}
       CVM_ALLOW_SENSITIVE_EXPORT: ${CVM_ALLOW_SENSITIVE_EXPORT:-false}
       CVM_EXPORTS_DIR: /app/var/exports
-      CVM_CORS_ORIGINS: http://localhost:${CVM_USER_WEB_PORT:-4200},http://127.0.0.1:${CVM_USER_WEB_PORT:-4200},http://localhost:${CVM_OPS_WEB_PORT:-4201},http://127.0.0.1:${CVM_OPS_WEB_PORT:-4201},http://localhost:${CVM_EVALS_WEB_PORT:-4202},http://127.0.0.1:${CVM_EVALS_WEB_PORT:-4202}
+      CVM_CORS_ORIGINS: http://localhost:${CVM_USER_WEB_PORT:-4200},http://127.0.0.1:${CVM_USER_WEB_PORT:-4200},http://localhost:${CVM_OPS_WEB_PORT:-4201},http://127.0.0.1:${CVM_OPS_WEB_PORT:-4201}
     command:
       - /app/.venv/bin/uvicorn
       - cvm_platform.main:app
@@ -158,7 +274,7 @@ services:
       CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
       CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
       CVM_TEMPORAL_HOST: temporal:7233
-      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-search-runs}
+      CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-agent-runs}
       CVM_TEMPORAL_NAMESPACE: ${CVM_TEMPORAL_NAMESPACE:-default}
       CVM_TEMPORAL_VISIBILITY_BACKEND: ${CVM_TEMPORAL_VISIBILITY_BACKEND:-opensearch}
       CVM_TEMPORAL_UI_BASE_URL: http://127.0.0.1:${CVM_TEMPORAL_UI_PORT:-8080}
@@ -169,6 +285,11 @@ services:
       CVM_LLM_BASE_URL: ${CVM_LLM_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      CVM_LANGFUSE_PUBLIC_KEY: ${CVM_LANGFUSE_PUBLIC_KEY-pk-lf-local-cvm}
+      CVM_LANGFUSE_SECRET_KEY: ${CVM_LANGFUSE_SECRET_KEY-sk-lf-local-cvm}
+      CVM_LANGFUSE_HOST: ${CVM_LANGFUSE_DOCKER_HOST-http://web-evals:3000}
+      CVM_LANGFUSE_BASE_URL: ${CVM_LANGFUSE_BASE_URL-http://127.0.0.1:4202}
+      CVM_LANGFUSE_ENVIRONMENT: ${CVM_LANGFUSE_ENVIRONMENT:-local}
       CVM_RESUME_SOURCE_MODE: ${CVM_RESUME_SOURCE_MODE:-cts}
       CVM_CTS_BASE_URL: ${CVM_CTS_BASE_URL:-https://link.hewa.cn}
       CVM_CTS_TENANT_KEY: ${CVM_CTS_TENANT_KEY:-}
@@ -216,19 +337,27 @@ services:
       retries: 20
 
   web-evals:
-    build:
-      context: .
-      dockerfile: infra/docker/angular-web.Dockerfile
-      args:
-        APP_DIR: apps/web-evals
-        APP_NAME: web-evals
+    image: docker.io/langfuse/langfuse:3
     depends_on:
-      api:
-        condition: service_healthy
+      <<: *langfuse_depends_on
+      langfuse-worker:
+        condition: service_started
+    environment:
+      <<: *langfuse_common_env
+      NEXTAUTH_SECRET: ${CVM_LANGFUSE_NEXTAUTH_SECRET:-cvm-local-langfuse-nextauth-secret}
+      LANGFUSE_INIT_ORG_ID: ${CVM_LANGFUSE_INIT_ORG_ID:-org-cvm-local}
+      LANGFUSE_INIT_ORG_NAME: ${CVM_LANGFUSE_INIT_ORG_NAME:-CVM Local}
+      LANGFUSE_INIT_PROJECT_ID: ${CVM_LANGFUSE_INIT_PROJECT_ID:-project-cvm-local}
+      LANGFUSE_INIT_PROJECT_NAME: ${CVM_LANGFUSE_INIT_PROJECT_NAME:-CVM Agent Local}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${CVM_LANGFUSE_PUBLIC_KEY-pk-lf-local-cvm}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${CVM_LANGFUSE_SECRET_KEY-sk-lf-local-cvm}
+      LANGFUSE_INIT_USER_EMAIL: ${CVM_LANGFUSE_INIT_USER_EMAIL:-admin@local.test}
+      LANGFUSE_INIT_USER_NAME: ${CVM_LANGFUSE_INIT_USER_NAME:-Local Admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${CVM_LANGFUSE_INIT_USER_PASSWORD:-local-admin-pass}
     ports:
-      - "${CVM_EVALS_WEB_PORT:-4202}:80"
+      - "${CVM_EVALS_WEB_PORT:-4202}:3000"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://$(hostname -i):3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -236,3 +365,8 @@ services:
 volumes:
   postgres_data:
   opensearch_data:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:
+  langfuse_redis_data:

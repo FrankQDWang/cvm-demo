@@ -21,10 +21,6 @@ class FakeClient:
     def __init__(self) -> None:
         self._responses = iter(
             [
-                {"caseId": "case_1"},
-                {"jdVersionId": "jd_1"},
-                {"planId": "plan_1", "draft": {}},
-                {"planId": "plan_1"},
                 {"runId": "run_1"},
             ]
         )
@@ -62,20 +58,22 @@ class RetryingUiClient:
 def test_temporal_visibility_smoke_requires_completed_run(monkeypatch) -> None:
     monkeypatch.setattr(smoke, "require_local_stack", lambda: None)
     monkeypatch.setattr(smoke, "build_client", lambda timeout_seconds=20.0: FakeClient())
-    monkeypatch.setattr(smoke, "unique_idempotency_key", lambda prefix: f"{prefix}-1")
     monkeypatch.setattr(
         smoke,
-        "wait_for_search_run",
-        lambda client, run_id: {"status": "failed", "errorSummary": "CTS response invalid"},
+        "wait_for_agent_run",
+        lambda client, run_id: {"status": "failed", "errorMessage": "CTS response invalid"},
     )
     monkeypatch.setattr(
         smoke,
-        "wait_for_temporal_diagnostic",
+        "wait_for_agent_temporal_diagnostic",
         lambda client, run_id: {
             "runId": run_id,
-            "workflowId": "search-run-run_1",
+            "workflowId": "agent-run-run_1",
             "namespace": "default",
             "appStatus": "failed",
+            "currentRound": 1,
+            "stepCount": 2,
+            "finalShortlistCount": 0,
             "temporalExecutionFound": True,
             "visibilityIndexed": True,
             "temporalUiUrl": "http://127.0.0.1:8080",
@@ -91,16 +89,18 @@ def test_temporal_visibility_smoke_requires_completed_run(monkeypatch) -> None:
 def test_temporal_visibility_smoke_rejects_failed_app_status(monkeypatch) -> None:
     monkeypatch.setattr(smoke, "require_local_stack", lambda: None)
     monkeypatch.setattr(smoke, "build_client", lambda timeout_seconds=20.0: FakeClient())
-    monkeypatch.setattr(smoke, "unique_idempotency_key", lambda prefix: f"{prefix}-1")
-    monkeypatch.setattr(smoke, "wait_for_search_run", lambda client, run_id: {"status": "completed"})
+    monkeypatch.setattr(smoke, "wait_for_agent_run", lambda client, run_id: {"status": "completed"})
     monkeypatch.setattr(
         smoke,
-        "wait_for_temporal_diagnostic",
+        "wait_for_agent_temporal_diagnostic",
         lambda client, run_id: {
             "runId": run_id,
-            "workflowId": "search-run-run_1",
+            "workflowId": "agent-run-run_1",
             "namespace": "default",
             "appStatus": "failed",
+            "currentRound": 1,
+            "stepCount": 2,
+            "finalShortlistCount": 5,
             "temporalExecutionFound": True,
             "visibilityIndexed": True,
             "temporalUiUrl": "http://127.0.0.1:8080",
@@ -124,4 +124,4 @@ def test_assert_ui_visibility_retries_transient_ui_errors(monkeypatch) -> None:
     monkeypatch.setattr(smoke.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(smoke.httpx, "Client", lambda timeout=10.0, trust_env=False: RetryingUiClient(outcomes))
 
-    smoke.assert_ui_visibility("search-run-run_1", "default")
+    smoke.assert_ui_visibility("agent-run-run_1", "default")

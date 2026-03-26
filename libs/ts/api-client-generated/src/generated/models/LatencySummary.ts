@@ -3,6 +3,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export type LatencySummary = {
-    avgSearchRunSeconds: number;
+    avgAgentRunSeconds: number;
 };
 

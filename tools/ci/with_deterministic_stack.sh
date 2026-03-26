@@ -22,6 +22,10 @@ export CVM_TEST_API_BASE_URL="http://127.0.0.1:${CVM_API_PORT}"
 export CVM_TEMPORAL_HOST="127.0.0.1:${CVM_TEMPORAL_PORT}"
 export CVM_TEMPORAL_UI_BASE_URL="http://127.0.0.1:${CVM_TEMPORAL_UI_PORT}"
 export CVM_OPENSEARCH_BASE_URL="http://127.0.0.1:${CVM_OPENSEARCH_PORT}"
+export CVM_LANGFUSE_PUBLIC_KEY=""
+export CVM_LANGFUSE_SECRET_KEY=""
+export CVM_LANGFUSE_HOST=""
+export CVM_LANGFUSE_BASE_URL=""
 
 cleanup() {
   docker compose down --remove-orphans >/dev/null 2>&1 || true

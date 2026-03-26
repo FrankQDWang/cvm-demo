@@ -4,10 +4,10 @@
 /* eslint-disable */
 export const $FailureSummary = {
     properties: {
-        searchRuns: {
+        agentRuns: {
             type: 'array',
             contains: {
-                type: 'SearchRunFailureCount',
+                type: 'AgentRunFailureCount',
             },
             isRequired: true,
         },

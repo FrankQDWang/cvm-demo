@@ -7,9 +7,9 @@
   },
   "scripts": {
     "codegen:ts": "openapi --input contracts/openapi/platform-api.openapi.yaml --output libs/ts/api-client-generated/src/generated --client fetch --useOptions --exportSchemas true",
-    "lint:ts": "eslint --max-warnings=0 apps/web-user/src apps/web-ops/src apps/web-evals/src libs/ts/platform-api-client/src",
-    "check:deps:ts": "depcruise --config .dependency-cruiser.cjs apps/web-user/src apps/web-ops/src apps/web-evals/src libs/ts/platform-api-client/src",
-    "check:unused:ts": "knip --config knip.config.ts --workspace apps/web-user --workspace apps/web-ops --workspace apps/web-evals --workspace libs/ts/platform-api-client --no-config-hints"
+    "lint:ts": "eslint --max-warnings=0 apps/web-user/src apps/web-ops/src libs/ts/platform-api-client/src",
+    "check:deps:ts": "depcruise --config .dependency-cruiser.cjs apps/web-user/src apps/web-ops/src libs/ts/platform-api-client/src",
+    "check:unused:ts": "knip --config knip.config.ts --workspace apps/web-user --workspace apps/web-ops --workspace libs/ts/platform-api-client --no-config-hints"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",

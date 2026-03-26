@@ -184,4 +184,88 @@ MOCK_CANDIDATES: list[MockCandidatePayload] = [
             "projectNames": ["candidate pipeline insights"],
         },
     },
+    {
+        "external_identity_id": "cts_005",
+        "name": "赵敏",
+        "title": "LLM Application Engineer",
+        "company": "Ant Group",
+        "location": "Hangzhou",
+        "summary": "Python, agents, retrieval, evaluation workflows",
+        "email": "zhaomin@example.com",
+        "phone": "13566668888",
+        "resumeProjection": {
+            "workYear": 6,
+            "currentLocation": "Hangzhou",
+            "expectedLocation": "Hangzhou",
+            "jobState": "OpenToWork",
+            "expectedSalary": "40k-55k",
+            "age": 30,
+            "education": [
+                {
+                    "school": "Zhejiang University",
+                    "degree": "Master",
+                    "major": "Software Engineering",
+                    "startTime": "2012-09",
+                    "endTime": "2015-06",
+                }
+            ],
+            "workExperience": [
+                {
+                    "company": "Ant Group",
+                    "title": "LLM Application Engineer",
+                    "duration": "2021-04 ~ now",
+                    "startTime": "2021-04",
+                    "endTime": None,
+                    "summary": "Built agent retrieval flows with Python services and automated eval gates.",
+                }
+            ],
+            "workSummaries": [
+                "Built agent retrieval flows with Python services and automated eval gates.",
+                "Owned search ranking experiments and recruiter tooling.",
+            ],
+            "projectNames": ["agent retrieval", "eval gates"],
+        },
+    },
+    {
+        "external_identity_id": "cts_006",
+        "name": "周宁",
+        "title": "Applied AI Engineer",
+        "company": "MiniMax",
+        "location": "Shanghai",
+        "summary": "ReAct, prompt engineering, Python, workflow orchestration",
+        "email": "zhouning@example.com",
+        "phone": "13500001111",
+        "resumeProjection": {
+            "workYear": 5,
+            "currentLocation": "Shanghai",
+            "expectedLocation": "Shanghai",
+            "jobState": "Passive",
+            "expectedSalary": "38k-52k",
+            "age": 29,
+            "education": [
+                {
+                    "school": "Tongji University",
+                    "degree": "Bachelor",
+                    "major": "Automation",
+                    "startTime": "2013-09",
+                    "endTime": "2017-06",
+                }
+            ],
+            "workExperience": [
+                {
+                    "company": "MiniMax",
+                    "title": "Applied AI Engineer",
+                    "duration": "2022-06 ~ now",
+                    "startTime": "2022-06",
+                    "endTime": None,
+                    "summary": "Implemented ReAct loops, prompt tuning, and workflow orchestration for agent products.",
+                }
+            ],
+            "workSummaries": [
+                "Implemented ReAct loops, prompt tuning, and workflow orchestration for agent products.",
+                "Worked on shortlist reasoning and user-facing agent summaries.",
+            ],
+            "projectNames": ["react orchestration", "agent shortlist"],
+        },
+    },
 ]

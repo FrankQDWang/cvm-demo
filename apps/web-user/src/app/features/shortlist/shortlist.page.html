@@ -1,0 +1,77 @@
+<main class="layout">
+  <section class="workspace">
+    <aside class="intake">
+      <p class="section-label">输入</p>
+
+      <label class="field">
+        <span>JD</span>
+        <textarea
+          [(ngModel)]="jdText"
+          [disabled]="isStarting"
+          rows="10"
+          placeholder="粘贴职位描述"
+        ></textarea>
+      </label>
+
+      <label class="field">
+        <span>寻访偏好</span>
+        <textarea
+          [(ngModel)]="sourcingPreferenceText"
+          [disabled]="isStarting"
+          rows="6"
+          placeholder="粘贴寻访须知"
+        ></textarea>
+      </label>
+
+      <div class="actions">
+        <button class="primary-action" type="button" (click)="startRun()" [disabled]="!canStart">
+          {{ isStarting ? '运行中…' : '开始运行' }}
+        </button>
+        <p class="inline-state" *ngIf="statusLine">{{ statusLine }}</p>
+        <p class="inline-state error" *ngIf="errorMessage">{{ errorMessage }}</p>
+        <a *ngIf="traceUrl" class="trace-link" [href]="traceUrl" target="_blank" rel="noreferrer">查看 Langfuse Trace</a>
+      </div>
+    </aside>
+
+    <section class="results">
+      <header class="results-head">
+        <p class="section-label">结果</p>
+        <span *ngIf="hasShortlist">Top 5</span>
+      </header>
+
+      <div class="results-body" *ngIf="hasShortlist; else resultsPlaceholder">
+        <article
+          class="result-row"
+          *ngFor="let row of shortlist; trackBy: trackShortlist"
+        >
+          <div class="result-summary">
+            <span class="rank">{{ row.rank < 10 ? '0' + row.rank : row.rank }}</span>
+            <div class="summary-copy">
+              <strong>{{ row.candidate.name }}</strong>
+              <p>{{ candidateMeta(row.candidate) }}</p>
+            </div>
+            <span class="score">{{ candidateScore(row.candidate) }}</span>
+          </div>
+          <div class="result-detail">
+            <p class="detail-label">推荐原因</p>
+            <p class="detail-text">{{ row.candidate.reason }}</p>
+          </div>
+        </article>
+      </div>
+    </section>
+  </section>
+</main>
+
+<ng-template #resultsPlaceholder>
+  <div class="placeholder">
+    <p *ngIf="errorMessage; else placeholderStatus">{{ errorMessage }}</p>
+  </div>
+</ng-template>
+
+<ng-template #placeholderStatus>
+  <p *ngIf="statusLine; else placeholderEmpty">{{ statusLine }}</p>
+</ng-template>
+
+<ng-template #placeholderEmpty>
+  <p>结果会出现在这里</p>
+</ng-template>

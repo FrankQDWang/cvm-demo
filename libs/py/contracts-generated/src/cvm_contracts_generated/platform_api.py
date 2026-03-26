@@ -4,8 +4,17 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, conint, constr
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    conint,
+    constr,
+)
 
 
 class CreateCaseRequest(BaseModel):
@@ -35,92 +44,28 @@ class CreateJdVersionResponse(BaseModel):
     status: str
 
 
-class EvidenceRef(BaseModel):
+class RoundFetchScheduleItem(RootModel[conint(ge=1)]):
+    root: conint(ge=1)
+
+
+class AgentRunConfig(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    label: constr(min_length=1)
-    excerpt: constr(min_length=1)
+    maxRounds: conint(ge=1)
+    roundFetchSchedule: list[RoundFetchScheduleItem] = Field(..., min_length=1)
+    finalTopK: conint(ge=1)
 
 
-class StructuredFilters(BaseModel):
+class CreateAgentRunRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    page: conint(ge=1)
-    pageSize: conint(ge=1)
-    location: list[constr(min_length=1)] | None = None
-    degree: int | None = None
-    schoolType: int | None = None
-    workExperienceRange: int | None = None
-    position: constr(min_length=1) | None = None
-    workContent: constr(min_length=1) | None = None
-    company: constr(min_length=1) | None = None
-    school: constr(min_length=1) | None = None
+    jdText: constr(min_length=1)
+    sourcingPreferenceText: constr(min_length=1)
 
 
-class ConditionPlanDraft(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    mustTerms: list[constr(min_length=1)]
-    shouldTerms: list[constr(min_length=1)]
-    excludeTerms: list[constr(min_length=1)]
-    structuredFilters: StructuredFilters
-    evidenceRefs: list[EvidenceRef]
-
-
-class CreateKeywordDraftJobRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    jdVersionId: constr(min_length=1)
-    modelVersion: constr(min_length=1)
-    promptVersion: constr(min_length=1)
-
-
-class CreateKeywordDraftJobResponse(BaseModel):
-    jobId: str
-    status: str
-    planId: str
-    draft: ConditionPlanDraft
-
-
-class ConfirmConditionPlanRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    mustTerms: list[constr(min_length=1)]
-    shouldTerms: list[constr(min_length=1)]
-    excludeTerms: list[constr(min_length=1)]
-    structuredFilters: StructuredFilters
-    evidenceRefs: list[EvidenceRef]
-    confirmedBy: constr(min_length=1)
-
-
-class NormalizedQuery(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    jd: constr(min_length=1)
-    mustTerms: list[constr(min_length=1)]
-    shouldTerms: list[constr(min_length=1)]
-    excludeTerms: list[constr(min_length=1)]
-    structuredFilters: StructuredFilters
-    keyword: constr(min_length=1)
-
-
-class CreateSearchRunRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    caseId: constr(min_length=1)
-    planId: constr(min_length=1)
-    pageBudget: conint(ge=1)
-    idempotencyKey: constr(min_length=1)
-
-
-class CreateSearchRunResponse(BaseModel):
+class CreateAgentRunResponse(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -128,15 +73,81 @@ class CreateSearchRunResponse(BaseModel):
     status: str
 
 
-class SearchRunStatusResponse(BaseModel):
+class AgentRunStep(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    stepNo: conint(ge=1)
+    roundNo: conint(ge=1) | None = None
+    stepType: str
+    title: str
+    status: str
+    summary: str
+    payload: dict[str, Any]
+    occurredAt: AwareDatetime
+
+
+class AgentShortlistCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    externalIdentityId: str
+    name: str
+    title: str
+    company: str
+    location: str
+    summary: str
+    reason: str
+    score: float
+    sourceRound: conint(ge=1)
+
+
+class AgentRunListItem(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     runId: str
     status: str
-    progress: float
-    pageCount: int
-    errorSummary: str | None = None
+    currentRound: conint(ge=0)
+    createdAt: AwareDatetime
+    finishedAt: AwareDatetime | None = None
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    langfuseTraceUrl: str | None = None
+
+
+class AgentRunListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    runs: list[AgentRunListItem]
+
+
+class AgentRunResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    runId: str
+    status: str
+    jdText: str
+    sourcingPreferenceText: str
+    config: AgentRunConfig
+    currentRound: conint(ge=0)
+    modelVersion: str
+    promptVersion: str
+    workflowId: str | None
+    temporalNamespace: str | None
+    temporalTaskQueue: str | None
+    langfuseTraceId: str | None = None
+    langfuseTraceUrl: str | None = None
+    steps: list[AgentRunStep]
+    finalShortlist: list[AgentShortlistCandidate]
+    seenResumeIds: list[str]
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    createdAt: AwareDatetime
+    startedAt: AwareDatetime
+    finishedAt: AwareDatetime | None = None
 
 
 class CandidateCard(BaseModel):
@@ -150,27 +161,6 @@ class CandidateCard(BaseModel):
     company: str
     location: str
     summary: str | None = None
-
-
-class SearchRunPageSnapshot(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    pageNo: int
-    status: str
-    fetchedAt: AwareDatetime
-    candidates: list[CandidateCard]
-    total: int
-    errorCode: str | None = None
-    errorMessage: str | None = None
-
-
-class SearchRunPagesResponse(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    runId: str
-    snapshots: list[SearchRunPageSnapshot]
 
 
 class ResumeEducationItem(BaseModel):
@@ -288,7 +278,7 @@ class MetricItem(BaseModel):
     value: float
 
 
-class SearchRunStatusCount(BaseModel):
+class AgentRunStatusCount(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -296,7 +286,7 @@ class SearchRunStatusCount(BaseModel):
     count: int
 
 
-class SearchRunFailureCount(BaseModel):
+class AgentRunFailureCount(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -308,21 +298,21 @@ class QueueSummary(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    searchRuns: list[SearchRunStatusCount]
+    agentRuns: list[AgentRunStatusCount]
 
 
 class FailureSummary(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    searchRuns: list[SearchRunFailureCount]
+    agentRuns: list[AgentRunFailureCount]
 
 
 class LatencySummary(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    avgSearchRunSeconds: float
+    avgAgentRunSeconds: float
 
 
 class OpsVersionInfo(BaseModel):
@@ -349,7 +339,7 @@ class OpsSummaryResponse(BaseModel):
     metrics: list[MetricItem]
 
 
-class TemporalSearchRunDiagnosticResponse(BaseModel):
+class TemporalAgentRunDiagnosticResponse(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
@@ -358,6 +348,9 @@ class TemporalSearchRunDiagnosticResponse(BaseModel):
     namespace: str
     taskQueue: str
     appStatus: str
+    currentRound: conint(ge=0)
+    stepCount: conint(ge=0)
+    finalShortlistCount: conint(ge=0)
     temporalExecutionFound: bool
     temporalExecutionStatus: str | None = None
     visibilityIndexed: bool
@@ -365,6 +358,10 @@ class TemporalSearchRunDiagnosticResponse(BaseModel):
     startedAt: AwareDatetime | None = None
     closedAt: AwareDatetime | None = None
     error: str | None = None
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    stopReason: str | None = None
+    langfuseTraceUrl: str | None = None
     temporalUiUrl: str
 
 
@@ -392,15 +389,6 @@ class ApiErrorResponse(BaseModel):
     code: str
     message: str
     retryable: bool
-
-
-class ConfirmConditionPlanResponse(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    planId: str
-    status: str
-    normalizedQuery: NormalizedQuery
 
 
 class VerdictRecord(BaseModel):

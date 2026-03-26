@@ -18,7 +18,7 @@ def test_blocking_suite_passes(tmp_path, monkeypatch) -> None:
     assert result["passed"] is True
 
 
-def test_blocking_suite_returns_failure_result_when_search_run_fails(tmp_path, monkeypatch) -> None:
+def test_blocking_suite_returns_failure_result_when_agent_run_fails(tmp_path, monkeypatch) -> None:
     class FailedResumeSource:
         def search_candidates(self, normalized_query, page_no: int, page_size: int) -> SearchPageData:
             del normalized_query
@@ -45,5 +45,5 @@ def test_blocking_suite_returns_failure_result_when_search_run_fails(tmp_path, m
 
     assert result["passed"] is False
     assert result["checks"]["runCompleted"] is False
-    assert result["checks"]["candidateAvailable"] is False
+    assert result["checks"]["shortlistReturned"] is False
     assert "CTS response did not match the validated schema" in str(result["failureReason"])

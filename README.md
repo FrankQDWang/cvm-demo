@@ -10,17 +10,16 @@ cp .env.example .env
 make up
 ```
 
-- `Cases` 页现在按业务步骤拆成 `新建 JD Case -> 生成草案 -> 确认条件 -> Search Run -> 浏览候选 -> 简历辅助分析 -> verdict -> 导出`。
-- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET` 和 `OPENAI_API_KEY`。
+- `User Web` 现在只保留一个最小闭环页面：输入 `JD` 与 `寻访偏好`，一次启动，返回最终 Top 5 shortlist。
+- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET` 和 `OPENAI_API_KEY`；自托管 Langfuse 的本地凭据和初始化参数已经一并给出默认值。
 - `API` 和 `worker` 在本地运行时默认按 `CVM_LLM_MODE=live` 调用 OpenAI `Responses API`；自动化测试与 CI 不读取这些 mode 作为判定依据，而是显式切到 deterministic `mock + stub`。
-- `Search Run` 现在默认且唯一通过 `Temporal` 执行，不再支持同步 fallback。
+- `Agent Run` 现在默认且唯一通过 `Temporal` 执行，不再支持旧的多步检索链。
 - `Temporal` 可见性现在默认走 `OpenSearch-backed advanced visibility`；判断 `Temporal UI` 前，先执行显式重建命令。
 
 ## Repo Shape
 
 - `apps/web-user`: User-facing recruiting workbench.
 - `apps/web-ops`: Internal monitoring web.
-- `apps/web-evals`: Internal evaluation web.
 - `services/platform-api`: FastAPI modular monolith.
 - `services/temporal-worker`: Temporal worker and workflows.
 - `services/eval-runner`: Blocking eval suite runner.
@@ -35,9 +34,9 @@ make up
 
 ## Runtime Notes
 
-- User web lives in `apps/web-user`, monitoring web in `apps/web-ops`, and evaluation web in `apps/web-evals`.
-- `docker compose` now starts the full local stack: `postgres`, `opensearch`, `temporal`, `temporal-ui`, `temporal-admin-tools`, `api`, `worker`, `web-user`, `web-ops`, and `web-evals`.
-- Manual host-mode development is available with `make dev-api`, `make dev-worker`, `make dev-web-user`, `make dev-web-ops`, and `make dev-web-evals`.
+- User web lives in `apps/web-user`, monitoring web in `apps/web-ops`, and `http://127.0.0.1:4202` is a self-hosted Langfuse UI rather than a separate Angular eval app.
+- `docker compose` now starts the full local stack: `postgres`, `opensearch`, `temporal`, `temporal-ui`, `temporal-admin-tools`, `langfuse-postgres`, `langfuse-clickhouse`, `langfuse-minio`, `langfuse-redis`, `langfuse-worker`, `web-evals` (Langfuse web), `api`, `worker`, `web-user`, and `web-ops`.
+- Manual host-mode development is available with `make dev-api`, `make dev-worker`, `make dev-web-user`, `make dev-web-ops`, and `make dev-web-evals`; the last one starts the self-hosted Langfuse containers.
 - 真实运行时配置从 `.env` 读取；自动化 stack tests 和 CI 会显式覆盖为 deterministic `mock + stub`，不依赖 `.env` 中的 mode 配置。
 
 ## CI
@@ -64,15 +63,16 @@ make down
 - `make up-build` runs `docker compose up -d --build` when Dockerfile or dependencies changed, and refreshes `CVM_BUILD_ID`.
 - `make rebuild-backend` only rebuilds `api + worker`; use it after changing Python code or dependencies.
 - `make rebuild-temporal-stack` force-recreates `opensearch + temporal + temporal-ui + temporal-admin-tools`; use it after changing Temporal/OpenSearch config.
-- `make temporal-visibility-smoke` creates a smoke `SearchRun` and checks DB state, Temporal execution, visibility index, and UI count together.
+- `make temporal-visibility-smoke` creates a smoke `AgentRun` and checks Temporal execution, visibility index, and UI count together.
 - `make test` is deterministic and does not require a pre-started local stack.
 - `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke` now self-manage an isolated deterministic compose stack with `mock + stub`; they do not consume `.env` 中的 LLM / CTS mode.
 - If you intentionally want to point these commands at an already running stack, set `CVM_EXTERNAL_STACK=1`.
-- `make verify-images` validates that `api`, `worker`, `web-user`, `web-ops`, and `web-evals` Docker images still build from the current worktree.
+- `make verify-images` validates that `api`, `worker`, `web-user`, and `web-ops` Docker images still build from the current worktree, and pulls the self-hosted Langfuse runtime images used by `web-evals`.
 - `make up` and `make status` both print copyable local URLs after execution.
 - User Web: `http://127.0.0.1:4200`
 - Ops Web: `http://127.0.0.1:4201`
-- Evals Web: `http://127.0.0.1:4202`
+- Langfuse UI: `http://127.0.0.1:4202`
+- Langfuse Login: `admin@local.test / local-admin-pass`
 - API URL: `http://127.0.0.1:8010`
 - Temporal UI: `http://127.0.0.1:8080`
 - OpenSearch: `http://127.0.0.1:9200`

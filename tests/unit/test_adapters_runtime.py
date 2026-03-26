@@ -210,6 +210,42 @@ def test_openai_adapter_rejects_invalid_json_and_empty_output(monkeypatch: pytes
         adapter._parse_draft("No JSON body present here")
 
 
+def test_openai_agent_prompts_are_chinese_and_reflection_uses_round_ledger() -> None:
+    adapter = OpenAILLMAdapter(api_key="test-key", model="gpt-5.4-mini")
+    strategy_prompt = adapter._build_agent_search_strategy_prompt(
+        jd_text="需要 Python FastAPI 全栈工程师",
+        sourcing_preference_text="偏好医疗和私有化交付经验",
+        model_version="gpt-5.4-mini",
+        prompt_version="agent-loop-v1",
+    )
+    analysis_prompt = adapter._build_resume_match_prompt(
+        jd_text="需要 Python FastAPI 全栈工程师",
+        sourcing_preference_text="偏好医疗和私有化交付经验",
+        strategy=_normalized_query(),
+        candidate=MockResumeSourceAdapter().search_candidates(_normalized_query(), page_no=1, page_size=1).candidates[0],
+        model_version="gpt-5.4-mini",
+        prompt_version="agent-loop-v1",
+    )
+    reflection_prompt = adapter._build_search_reflection_prompt(
+        jd_text="需要 Python FastAPI 全栈工程师",
+        sourcing_preference_text="偏好医疗和私有化交付经验",
+        strategy=_normalized_query(),
+        round_ledger=[{"roundNo": 1, "search": {"returnedCount": 10}}],
+        round_no=2,
+        max_rounds=3,
+        new_candidate_count=0,
+        seen_candidate_count=10,
+        model_version="gpt-5.4-mini",
+        prompt_version="agent-loop-v1",
+    )
+
+    assert "你是寻访 Agent 的首轮策略提取器" in strategy_prompt
+    assert "请直接返回 JSON" in strategy_prompt
+    assert "你要判断一份简历是否应该留在 shortlist" in analysis_prompt
+    assert "append-only 的轮次账本" in reflection_prompt
+    assert "轮次账本" in reflection_prompt
+
+
 def test_mock_and_missing_resume_sources_return_contract_failures() -> None:
     query = _normalized_query()
     invalid_page = MockResumeSourceAdapter().search_candidates(query, page_no=0, page_size=10)
@@ -289,6 +325,43 @@ def test_cts_resume_source_adapter_maps_successful_response(monkeypatch: pytest.
     assert result.candidates[0].company == "OpenAI"
     assert result.candidates[0].resume_projection["education"][0]["school"] == "复旦大学"
     assert "Agent" in result.candidates[0].summary
+
+
+def test_cts_resume_source_adapter_tolerates_missing_data_processing_timing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "cvm_platform.infrastructure.adapters.urllib_request.urlopen",
+        lambda request, timeout: JsonHTTPResponse(
+            {
+                "code": 200,
+                "status": "ok",
+                "message": "success",
+                "data": {
+                    "candidates": [_cts_candidate_payload()],
+                    "total": 1,
+                    "page": 1,
+                    "pageSize": 10,
+                },
+                "timings": {
+                    "validation": 1,
+                    "configPreparation": 1,
+                    "paramsPreparation": 1,
+                    "apiRequest": 1,
+                    "totalTime": 5,
+                },
+            }
+        ),
+    )
+
+    adapter = CtsResumeSourceAdapter(
+        base_url="https://cts.example.com",
+        tenant_key="tenant-key",
+        tenant_secret="tenant-secret",
+    )
+    result = adapter.search_candidates(_normalized_query(keyword=""), page_no=1, page_size=10)
+
+    assert result.status == "completed"
+    assert result.total == 1
+    assert result.candidates[0].name == "张三"
 
 
 def test_cts_resume_source_adapter_returns_documented_failure_codes(monkeypatch: pytest.MonkeyPatch) -> None:

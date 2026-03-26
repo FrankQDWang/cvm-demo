@@ -35,7 +35,6 @@ Rules:
 - `services/platform-api/**`
 - `services/temporal-worker/**`
 - `services/eval-runner/**`
-- `apps/web-evals/**`
 - `apps/web-ops/**` when required for eval or metrics views
 - `libs/ts/platform-api-client/**`
 - `libs/py/contracts-generated/**` via codegen only
@@ -53,7 +52,7 @@ Rules:
 
 ## Preconditions and Dependencies
 
-- Required repo state: deterministic stack harnesses, nightly/build verification workflows, blocking eval, SearchRun workflow, and snapshot immutability already exist in baseline form.
+- Required repo state: deterministic stack harnesses, nightly/build verification workflows, blocking eval, AgentRun workflow, and snapshot immutability already exist in baseline form.
 - Required contracts/docs: [Requirement Traceability](../../PRODUCT/requirement-traceability.md) and the completed plans under `docs/EXEC-PLANS/completed/`.
 - Required local stack or external services: deterministic stack automation via `make test-stack`, `make eval-critical`, and `make temporal-visibility-smoke`; live `.env` remains available for manual CTS/OpenAI confidence checks and throughput investigations.
 - Blocking unknowns: `ADR-002` is currently marked `conflict` and must either be explicitly retired, revised, or resolved in-repo rather than silently carried forward.

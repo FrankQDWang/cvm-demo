@@ -73,7 +73,6 @@ def test_initialize_database_applies_schema_updates(monkeypatch) -> None:
 
     assert "create_all:FakeConnection" in executed
     assert any("pg_advisory_lock" in statement for statement in executed)
-    assert any("ALTER TABLE search_run ADD COLUMN IF NOT EXISTS workflow_id" in statement for statement in executed)
     assert any("pg_advisory_unlock" in statement for statement in executed)
 
 
@@ -119,11 +118,11 @@ def test_temporal_timestamp_helpers() -> None:
 
 def test_build_temporal_ui_url_encodes_query() -> None:
     settings = Settings(_env_file=None, temporal_ui_base_url="http://127.0.0.1:8080")
-    url = temporal_diagnostics.build_temporal_ui_url(settings, "default", "search-run-1")
-    assert "WorkflowId%20%3D%20%27search-run-1%27" in url
+    url = temporal_diagnostics.build_temporal_ui_url(settings, "default", "agent-run-1")
+    assert "WorkflowId%20%3D%20%27agent-run-1%27" in url
 
 
-def test_inspect_search_run_reports_execution_and_visibility(monkeypatch) -> None:
+def test_inspect_agent_run_reports_execution_and_visibility(monkeypatch) -> None:
     start = Timestamp(seconds=10)
     close = Timestamp(seconds=20)
     info = SimpleNamespace(
@@ -139,11 +138,11 @@ def test_inspect_search_run_reports_execution_and_visibility(monkeypatch) -> Non
 
     class FakeClient:
         def get_workflow_handle(self, workflow_id: str) -> FakeHandle:
-            assert workflow_id == "search-run-1"
+            assert workflow_id == "agent-run-1"
             return FakeHandle()
 
         async def count_workflows(self, query: str):
-            assert "search-run-1" in query
+            assert "agent-run-1" in query
             return SimpleNamespace(count=1)
 
     async def fake_connect(host: str, *, namespace: str) -> FakeClient:
@@ -155,23 +154,32 @@ def test_inspect_search_run_reports_execution_and_visibility(monkeypatch) -> Non
 
     run = SimpleNamespace(
         id="run_1",
-        workflow_id="search-run-1",
+        workflow_id="agent-run-1",
         temporal_namespace="default",
-        temporal_task_queue="cvm-search-runs",
+        temporal_task_queue="cvm-agent-runs",
         status="completed",
+        current_round=2,
+        steps=[{"stepType": "stop", "summary": "Stopped because maxRounds was reached."}],
+        final_shortlist=[{"externalIdentityId": "resume_1"}],
+        error_code=None,
+        error_message=None,
+        langfuse_trace_url="http://127.0.0.1:4202/project/project-cvm-local/traces/abc",
         started_at=None,
         finished_at=None,
     )
     settings = Settings(_env_file=None, temporal_host="127.0.0.1:7233")
 
-    diagnostic = asyncio.run(temporal_diagnostics.inspect_search_run(run, settings))
+    diagnostic = asyncio.run(temporal_diagnostics.inspect_agent_run(run, settings))
 
     assert diagnostic["temporalExecutionFound"] is True
     assert diagnostic["visibilityIndexed"] is True
     assert diagnostic["temporalExecutionStatus"] == "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+    assert diagnostic["currentRound"] == 2
+    assert diagnostic["finalShortlistCount"] == 1
+    assert diagnostic["langfuseTraceUrl"] == "http://127.0.0.1:4202/project/project-cvm-local/traces/abc"
 
 
-def test_inspect_search_run_aggregates_failures(monkeypatch) -> None:
+def test_inspect_agent_run_aggregates_failures(monkeypatch) -> None:
     class FakeHandle:
         async def describe(self):
             raise OSError("describe failed")
@@ -194,14 +202,21 @@ def test_inspect_search_run_aggregates_failures(monkeypatch) -> None:
         temporal_namespace=None,
         temporal_task_queue=None,
         status="failed",
+        current_round=1,
+        steps=[],
+        final_shortlist=[],
+        error_code="OPENAI_TIMEOUT",
+        error_message="reflection timed out",
+        langfuse_trace_url=None,
         started_at=None,
         finished_at=None,
     )
     settings = Settings(_env_file=None, temporal_host="127.0.0.1:7233")
 
-    diagnostic = asyncio.run(temporal_diagnostics.inspect_search_run(run, settings))
+    diagnostic = asyncio.run(temporal_diagnostics.inspect_agent_run(run, settings))
 
     assert diagnostic["temporalExecutionFound"] is False
     assert diagnostic["visibilityIndexed"] is False
     assert "execution lookup failed" in diagnostic["error"]
     assert "visibility query failed" in diagnostic["error"]
+    assert diagnostic["errorCode"] == "OPENAI_TIMEOUT"

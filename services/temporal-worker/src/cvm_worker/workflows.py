@@ -11,22 +11,21 @@ with workflow.unsafe.imports_passed_through():
 
 
 @activity.defn
-def execute_search_run(run_id: str) -> str:
+def execute_agent_run(run_id: str) -> str:
     session = SessionLocal()
     try:
         service = build_platform_service(session, settings)
-        run = service.execute_search_run(run_id)
+        run = service.execute_agent_run(run_id)
         return run.status
     finally:
         session.close()
 
-
-@workflow.defn(name="SearchRunWorkflow")
-class SearchRunWorkflow:
+@workflow.defn(name="AgentRunWorkflow")
+class AgentRunWorkflow:
     @workflow.run
     async def run(self, run_id: str) -> str:
         return await workflow.execute_activity(
-            execute_search_run,
+            execute_agent_run,
             run_id,
-            start_to_close_timeout=timedelta(seconds=60),
+            start_to_close_timeout=timedelta(seconds=180),
         )

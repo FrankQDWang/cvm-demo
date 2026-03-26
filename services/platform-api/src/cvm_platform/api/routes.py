@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import cast
 
 from fastapi import APIRouter, Depends
 from temporalio.client import Client
@@ -9,43 +8,32 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
 from cvm_contracts_generated.platform_api import (
+    AgentRunListResponse,
+    AgentRunResponse,
     CandidateDetailResponse,
-    ConfirmConditionPlanResponse,
+    CreateAgentRunResponse,
     CreateCaseResponse,
     CreateEvalRunResponse,
     CreateExportResponse,
     CreateJdVersionResponse,
-    CreateKeywordDraftJobResponse,
-    CreateSearchRunResponse,
     OpsSummaryResponse,
     SaveVerdictResponse,
-    SearchRunPagesResponse,
-    SearchRunStatusResponse,
-    TemporalSearchRunDiagnosticResponse,
+    TemporalAgentRunDiagnosticResponse,
 )
 from cvm_platform.api.dependencies import service_dependency
 from cvm_platform.api.request_models import (
-    ConfirmConditionPlanRequestModel,
+    CreateAgentRunRequestModel,
     CreateCaseRequestModel,
     CreateEvalRunRequestModel,
     CreateExportRequestModel,
     CreateJdVersionRequestModel,
-    CreateKeywordDraftJobRequestModel,
-    CreateSearchRunRequestModel,
     SaveVerdictRequestModel,
 )
+from cvm_platform.application.dto import AgentRunRecord, CandidateDetailRecord, OpsSummaryRecord
 from cvm_platform.application.service import PlatformService
-from cvm_platform.application.dto import CandidateDetailRecord, OpsSummaryRecord
-from cvm_platform.domain.errors import TransientDependencyError, ValidationError
-from cvm_platform.domain.types import (
-    ConditionPlanDraftData,
-    EvidenceRef as DraftEvidenceRef,
-    StructuredFiltersPayload,
-)
-from cvm_platform.infrastructure.boundary_models import StructuredFiltersBoundaryModel
-from cvm_platform.infrastructure.temporal_diagnostics import inspect_search_run
+from cvm_platform.domain.errors import TransientDependencyError
+from cvm_platform.infrastructure.temporal_diagnostics import inspect_agent_run
 from cvm_platform.settings.config import settings
-from pydantic import BaseModel, ValidationError as PydanticValidationError
 
 
 router = APIRouter(prefix="/api/v1")
@@ -67,57 +55,21 @@ def create_jd_version(
     return CreateJdVersionResponse(jdVersionId=version.id, versionNo=version.version_no, status="active")
 
 
-@router.post("/cases/{case_id}/keyword-draft-jobs")
-def create_keyword_draft_job(
-    case_id: str,
-    request: CreateKeywordDraftJobRequestModel,
+@router.post("/agent-runs")
+async def create_agent_run(
+    request: CreateAgentRunRequestModel,
     service: PlatformService = Depends(service_dependency),
-) -> CreateKeywordDraftJobResponse:
-    result = service.create_keyword_draft_job(case_id, request.jdVersionId, request.modelVersion, request.promptVersion)
-    return CreateKeywordDraftJobResponse.model_validate(
-        {
-            "jobId": result.job.id,
-            "status": result.job.status,
-            "planId": result.plan.id,
-            "draft": result.job.draft_payload,
-        }
+) -> CreateAgentRunResponse:
+    run = service.create_agent_run(
+        jd_text=request.jdText,
+        sourcing_preference_text=request.sourcingPreferenceText,
+        config=None,
     )
-
-
-@router.post("/condition-plans/{plan_id}:confirm")
-def confirm_condition_plan(
-    plan_id: str,
-    request: ConfirmConditionPlanRequestModel,
-    service: PlatformService = Depends(service_dependency),
-) -> ConfirmConditionPlanResponse:
-    payload = ConditionPlanDraftData(
-        must_terms=list(request.mustTerms),
-        should_terms=list(request.shouldTerms),
-        exclude_terms=list(request.excludeTerms),
-        structured_filters=_structured_filters_payload(request.structuredFilters),
-        evidence_refs=[DraftEvidenceRef(label=ref.label, excerpt=ref.excerpt) for ref in request.evidenceRefs],
-    )
-    plan = service.confirm_condition_plan(plan_id, request.confirmedBy, payload)
-    return ConfirmConditionPlanResponse.model_validate(
-        {
-            "planId": plan.id,
-            "status": plan.status,
-            "normalizedQuery": plan.normalized_query,
-        }
-    )
-
-
-@router.post("/search-runs")
-async def create_search_run(
-    request: CreateSearchRunRequestModel,
-    service: PlatformService = Depends(service_dependency),
-) -> CreateSearchRunResponse:
-    run = service.create_search_run(request.caseId, request.planId, request.pageBudget, request.idempotencyKey)
-    workflow_id = run.workflow_id or f"search-run-{run.id}"
+    workflow_id = run.workflow_id or f"agent-run-{run.id}"
     try:
         client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
         await client.start_workflow(
-            "SearchRunWorkflow",
+            "AgentRunWorkflow",
             run.id,
             id=workflow_id,
             task_queue=settings.temporal_task_queue,
@@ -125,7 +77,7 @@ async def create_search_run(
     except WorkflowAlreadyStartedError:
         pass
     except (RPCError, OSError, TimeoutError) as exc:
-        service.fail_search_run_dispatch(
+        service.fail_agent_run_dispatch(
             run.id,
             "TEMPORAL_START_FAILED",
             "Temporal workflow dispatch failed.",
@@ -134,46 +86,34 @@ async def create_search_run(
             "TEMPORAL_START_FAILED",
             "Temporal workflow dispatch failed.",
         ) from exc
-    return CreateSearchRunResponse(runId=run.id, status=run.status)
+    return CreateAgentRunResponse(runId=run.id, status=run.status)
 
 
-@router.get("/search-runs/{run_id}")
-def get_search_run(run_id: str, service: PlatformService = Depends(service_dependency)) -> SearchRunStatusResponse:
-    run = service.get_search_run(run_id)
-    progress = 0.0 if run.page_budget == 0 else run.pages_completed / run.page_budget
-    return SearchRunStatusResponse(
-        runId=run.id,
-        status=run.status,
-        progress=progress,
-        pageCount=run.pages_completed,
-        errorSummary=run.error_message,
-    )
-
-
-@router.get("/search-runs/{run_id}/pages")
-def get_search_run_pages(
-    run_id: str,
-    pageNo: int | None = None,
-    service: PlatformService = Depends(service_dependency),
-) -> SearchRunPagesResponse:
-    snapshots = service.get_search_pages(run_id, pageNo)
-    return SearchRunPagesResponse.model_validate(
+@router.get("/agent-runs")
+def list_agent_runs(service: PlatformService = Depends(service_dependency)) -> AgentRunListResponse:
+    runs = service.list_agent_runs()
+    return AgentRunListResponse.model_validate(
         {
-            "runId": run_id,
-            "snapshots": [
+            "runs": [
                 {
-                    "pageNo": snapshot.page_no,
-                    "status": snapshot.status,
-                    "fetchedAt": _isoformat_datetime(snapshot.fetched_at),
-                    "candidates": snapshot.normalized_cards,
-                    "total": snapshot.total,
-                    "errorCode": snapshot.error_code,
-                    "errorMessage": snapshot.error_message,
+                    "runId": run.id,
+                    "status": run.status,
+                    "currentRound": run.current_round,
+                    "createdAt": _isoformat_datetime(run.created_at),
+                    "finishedAt": _isoformat_datetime(run.finished_at) if run.finished_at else None,
+                    "errorCode": run.error_code,
+                    "errorMessage": run.error_message,
+                    "langfuseTraceUrl": run.langfuse_trace_url,
                 }
-                for snapshot in snapshots
-            ],
+                for run in runs
+            ]
         }
     )
+
+
+@router.get("/agent-runs/{run_id}")
+def get_agent_run(run_id: str, service: PlatformService = Depends(service_dependency)) -> AgentRunResponse:
+    return _agent_run_response(service.get_agent_run(run_id))
 
 
 @router.get("/case-candidates/{candidate_id}")
@@ -214,6 +154,46 @@ def _candidate_detail_response(detail: CandidateDetailRecord) -> CandidateDetail
                 }
                 for item in detail.verdict_history
             ],
+        }
+    )
+
+
+def _agent_run_response(run: AgentRunRecord) -> AgentRunResponse:
+    return AgentRunResponse.model_validate(
+        {
+            "runId": run.id,
+            "status": run.status,
+            "jdText": run.jd_text,
+            "sourcingPreferenceText": run.sourcing_preference_text,
+            "config": run.config,
+            "currentRound": run.current_round,
+            "modelVersion": run.model_version,
+            "promptVersion": run.prompt_version,
+            "workflowId": run.workflow_id,
+            "temporalNamespace": run.temporal_namespace,
+            "temporalTaskQueue": run.temporal_task_queue,
+            "langfuseTraceId": run.langfuse_trace_id,
+            "langfuseTraceUrl": run.langfuse_trace_url,
+            "steps": [
+                {
+                    "stepNo": step["stepNo"],
+                    "roundNo": step["roundNo"],
+                    "stepType": step["stepType"],
+                    "title": step["title"],
+                    "status": step["status"],
+                    "summary": step["summary"],
+                    "payload": step["payload"],
+                    "occurredAt": step["occurredAt"],
+                }
+                for step in run.steps
+            ],
+            "finalShortlist": run.final_shortlist,
+            "seenResumeIds": run.seen_resume_ids,
+            "errorCode": run.error_code,
+            "errorMessage": run.error_message,
+            "createdAt": _isoformat_datetime(run.created_at),
+            "startedAt": _isoformat_datetime(run.started_at),
+            "finishedAt": _isoformat_datetime(run.finished_at) if run.finished_at else None,
         }
     )
 
@@ -275,14 +255,14 @@ def _ops_summary_response(summary: OpsSummaryRecord) -> OpsSummaryResponse:
     )
 
 
-@router.get("/ops/temporal/search-runs/{run_id}")
-async def get_search_run_temporal_diagnostic(
+@router.get("/ops/temporal/agent-runs/{run_id}")
+async def get_agent_run_temporal_diagnostic(
     run_id: str,
     service: PlatformService = Depends(service_dependency),
-) -> TemporalSearchRunDiagnosticResponse:
-    run = service.get_search_run(run_id)
-    diagnostic = await inspect_search_run(run, settings)
-    return TemporalSearchRunDiagnosticResponse.model_validate(diagnostic)
+) -> TemporalAgentRunDiagnosticResponse:
+    run = service.get_agent_run(run_id)
+    diagnostic = await inspect_agent_run(run, settings)
+    return TemporalAgentRunDiagnosticResponse.model_validate(diagnostic)
 
 
 @router.post("/evals/runs")
@@ -292,24 +272,6 @@ def create_eval_run(
 ) -> CreateEvalRunResponse:
     eval_run = service.create_eval_run(request.suiteId, request.datasetId, request.targetVersion)
     return CreateEvalRunResponse(evalRunId=eval_run.id, status=eval_run.status)
-
-
-def _structured_filters_payload(filters: object) -> StructuredFiltersPayload:
-    raw_payload: dict[str, object] = {"page": 1, "pageSize": 10}
-    if filters is None:
-        return {"page": 1, "pageSize": 10}
-    if isinstance(filters, BaseModel):
-        raw_payload = cast(dict[str, object], filters.model_dump(exclude_none=True))
-    elif isinstance(filters, dict):
-        raw_payload = cast(dict[str, object], cast(object, filters))
-    try:
-        model = StructuredFiltersBoundaryModel.model_validate(raw_payload)
-    except PydanticValidationError as exc:
-        raise ValidationError(
-            "INVALID_STRUCTURED_FILTERS",
-            "structuredFilters did not match the validated schema.",
-        ) from exc
-    return cast(StructuredFiltersPayload, cast(object, model.model_dump(exclude_none=True)))
 
 
 def _isoformat_datetime(value: datetime) -> str:

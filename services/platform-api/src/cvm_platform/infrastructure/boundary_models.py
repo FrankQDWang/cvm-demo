@@ -41,6 +41,45 @@ class OpenAIKeywordDraftModel(BaseModel):
     evidence_refs: list[OpenAIKeywordDraftEvidenceModel]
 
 
+class OpenAIAgentSearchStrategyModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    must_requirements: list[str]
+    core_requirements: list[str]
+    bonus_requirements: list[str]
+    exclude_signals: list[str]
+    round_1_query: "OpenAISearchQueryModel"
+    summary: str
+
+
+class OpenAIResumeMatchModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    score: float | int
+    summary: str
+    evidence: list[str]
+    concerns: list[str]
+
+
+class OpenAISearchReflectionModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    continue_search: bool
+    reason: str
+    next_round_goal: str
+    next_round_query: "OpenAISearchQueryModel"
+
+
+class OpenAISearchQueryModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    keyword: str
+    must_terms: list[str]
+    should_terms: list[str]
+    exclude_terms: list[str]
+    structured_filters: StructuredFiltersBoundaryModel
+
+
 class OpenAIOutputTextPartModel(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True)
 
@@ -148,7 +187,7 @@ class CtsTimingsModel(BaseModel):
     configPreparation: int
     paramsPreparation: int
     apiRequest: int
-    dataProcessing: int
+    dataProcessing: int | None = None
     totalTime: int
 
 
@@ -162,7 +201,7 @@ class CtsSearchResponseModel(BaseModel):
     timings: CtsTimingsModel | None = None
 
 
-class TemporalDiagnosticModel(BaseModel):
+class AgentRunTemporalDiagnosticModel(BaseModel):
     model_config = STRICT_MODEL_CONFIG
 
     runId: str
@@ -170,6 +209,9 @@ class TemporalDiagnosticModel(BaseModel):
     namespace: str
     taskQueue: str
     appStatus: str
+    currentRound: int = Field(ge=0)
+    stepCount: int = Field(ge=0)
+    finalShortlistCount: int = Field(ge=0)
     temporalExecutionFound: bool
     temporalExecutionStatus: str | None
     visibilityIndexed: bool
@@ -177,6 +219,10 @@ class TemporalDiagnosticModel(BaseModel):
     startedAt: str | None
     closedAt: str | None
     error: str | None
+    errorCode: str | None = None
+    errorMessage: str | None = None
+    stopReason: str | None = None
+    langfuseTraceUrl: HttpUrl | str | None = None
     temporalUiUrl: HttpUrl | str
 
 

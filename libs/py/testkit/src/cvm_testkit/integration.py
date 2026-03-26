@@ -9,7 +9,7 @@ import httpx
 
 
 def _read_json_object(response: httpx.Response) -> dict[str, object]:
-    payload = response.json()
+    payload: object = response.json()
     if not isinstance(payload, dict):
         raise RuntimeError("Expected JSON object response from the API.")
     return cast(dict[str, object], payload)
@@ -41,7 +41,7 @@ def unique_idempotency_key(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:12]}"
 
 
-def wait_for_search_run(
+def wait_for_agent_run(
     client: httpx.Client,
     run_id: str,
     timeout_seconds: float = 45.0,
@@ -51,7 +51,7 @@ def wait_for_search_run(
     latest_status: dict[str, object] | None = None
 
     while time.monotonic() < deadline:
-        response = client.get(f"/api/v1/search-runs/{run_id}")
+        response = client.get(f"/api/v1/agent-runs/{run_id}")
         response.raise_for_status()
         latest_status = _read_json_object(response)
         if latest_status.get("status") in {"completed", "failed"}:
@@ -59,12 +59,12 @@ def wait_for_search_run(
         time.sleep(poll_interval_seconds)
 
     raise RuntimeError(
-        f"Search run {run_id} 未在 {timeout_seconds:.0f} 秒内完成。"
+        f"Agent run {run_id} 未在 {timeout_seconds:.0f} 秒内完成。"
         "请确认 api、worker、temporal、postgres 已启动且 worker 正在消费任务。"
     )
 
 
-def wait_for_temporal_diagnostic(
+def wait_for_agent_temporal_diagnostic(
     client: httpx.Client,
     run_id: str,
     timeout_seconds: float = 45.0,
@@ -74,7 +74,7 @@ def wait_for_temporal_diagnostic(
     latest_diagnostic: dict[str, object] | None = None
 
     while time.monotonic() < deadline:
-        response = client.get(f"/api/v1/ops/temporal/search-runs/{run_id}")
+        response = client.get(f"/api/v1/ops/temporal/agent-runs/{run_id}")
         response.raise_for_status()
         latest_diagnostic = _read_json_object(response)
         if latest_diagnostic.get("temporalExecutionFound") and latest_diagnostic.get("visibilityIndexed"):
@@ -82,6 +82,6 @@ def wait_for_temporal_diagnostic(
         time.sleep(poll_interval_seconds)
 
     raise RuntimeError(
-        f"Search run {run_id} 未在 {timeout_seconds:.0f} 秒内完成 Temporal visibility 索引。"
+        f"Agent run {run_id} 未在 {timeout_seconds:.0f} 秒内完成 Temporal visibility 索引。"
         "请确认 temporal、worker、opensearch 已启动。"
     )

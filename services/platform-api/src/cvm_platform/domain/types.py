@@ -7,7 +7,8 @@ from typing import Literal, TypedDict, cast
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject = dict[str, JsonValue]
-SearchRunStatus = Literal["draft", "confirmed", "queued", "running", "completed", "failed"]
+AgentRunStatus = Literal["queued", "running", "completed", "failed"]
+PageFetchStatus = Literal["completed", "failed"]
 
 
 class EvidenceRefPayload(TypedDict):
@@ -35,6 +36,26 @@ class NormalizedQueryPayload(TypedDict):
     excludeTerms: list[str]
     structuredFilters: StructuredFiltersPayload
     keyword: str
+
+
+class SearchQueryPayload(TypedDict):
+    keyword: str
+    mustTerms: list[str]
+    shouldTerms: list[str]
+    excludeTerms: list[str]
+    structuredFilters: StructuredFiltersPayload
+
+
+class SearchQueryDeltaPayload(TypedDict):
+    setKeyword: str | None
+    addedMustTerms: list[str]
+    removedMustTerms: list[str]
+    addedShouldTerms: list[str]
+    removedShouldTerms: list[str]
+    addedExcludeTerms: list[str]
+    removedExcludeTerms: list[str]
+    changedStructuredFilters: JsonObject
+    removedStructuredFilterKeys: list[str]
 
 
 class CandidateCardPayload(TypedDict):
@@ -85,31 +106,69 @@ class ConditionPlanDraftPayload(TypedDict):
     evidenceRefs: list[EvidenceRefPayload]
 
 
-class SearchRunStatusCountPayload(TypedDict):
+class AgentRunStatusCountPayload(TypedDict):
     status: str
     count: int
 
 
-class SearchRunFailureCountPayload(TypedDict):
+class AgentRunFailureCountPayload(TypedDict):
     code: str
     count: int
 
 
 class QueueSummaryPayload(TypedDict):
-    searchRuns: list[SearchRunStatusCountPayload]
+    agentRuns: list[AgentRunStatusCountPayload]
 
 
 class FailureSummaryPayload(TypedDict):
-    searchRuns: list[SearchRunFailureCountPayload]
+    agentRuns: list[AgentRunFailureCountPayload]
 
 
 class LatencySummaryPayload(TypedDict):
-    avgSearchRunSeconds: float
+    avgAgentRunSeconds: float
 
 
 class EvalSummaryMetricsPayload(TypedDict):
     blockingChecks: int
     passedChecks: int
+
+
+class AgentRunConfigPayload(TypedDict):
+    maxRounds: int
+    roundFetchSchedule: list[int]
+    finalTopK: int
+
+
+class AgentSearchStrategyPayload(TypedDict):
+    mustRequirements: list[str]
+    coreRequirements: list[str]
+    bonusRequirements: list[str]
+    excludeSignals: list[str]
+    round1Query: SearchQueryPayload
+    summary: str
+
+
+class AgentRunStepPayload(TypedDict):
+    stepNo: int
+    roundNo: int | None
+    stepType: str
+    title: str
+    status: str
+    summary: str
+    payload: JsonObject
+    occurredAt: str
+
+
+class AgentShortlistCandidatePayload(TypedDict):
+    externalIdentityId: str
+    name: str
+    title: str
+    company: str
+    location: str
+    summary: str
+    reason: str
+    score: float
+    sourceRound: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -128,6 +187,41 @@ class ConditionPlanDraftData:
 
 
 @dataclass(slots=True)
+class AgentSearchStrategyData:
+    prompt_text: str
+    model_version: str
+    prompt_version: str
+    must_requirements: list[str]
+    core_requirements: list[str]
+    bonus_requirements: list[str]
+    exclude_signals: list[str]
+    round_1_query: SearchQueryPayload
+    summary: str
+
+
+@dataclass(slots=True)
+class ResumeMatchData:
+    prompt_text: str
+    model_version: str
+    prompt_version: str
+    score: float
+    summary: str
+    evidence: list[str]
+    concerns: list[str]
+
+
+@dataclass(slots=True)
+class SearchReflectionData:
+    prompt_text: str
+    model_version: str
+    prompt_version: str
+    continue_search: bool
+    reason: str
+    next_round_goal: str
+    next_round_query: SearchQueryPayload
+
+
+@dataclass(slots=True)
 class CandidateData:
     external_identity_id: str
     name: str
@@ -142,7 +236,7 @@ class CandidateData:
 
 @dataclass(slots=True)
 class SearchPageData:
-    status: SearchRunStatus
+    status: PageFetchStatus
     total: int
     page_no: int
     page_size: int

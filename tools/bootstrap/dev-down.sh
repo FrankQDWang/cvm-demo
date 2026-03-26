@@ -26,7 +26,6 @@ stop_pid() {
   rm -f "$pid_file"
 }
 
-stop_pid web-evals
 stop_pid web-ops
 stop_pid web-user
 stop_pid worker

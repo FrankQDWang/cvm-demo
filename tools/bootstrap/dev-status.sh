@@ -24,6 +24,5 @@ show_pid_status api
 show_pid_status worker
 show_pid_status web-user
 show_pid_status web-ops
-show_pid_status web-evals
 echo
 docker compose ps

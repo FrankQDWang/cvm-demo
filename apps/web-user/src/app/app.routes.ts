@@ -1,8 +1,8 @@
 import { Routes } from '@angular/router';
 
-import { CasesPageComponent } from './features/cases/cases.page';
+import { ShortlistPageComponent } from './features/shortlist/shortlist.page';
 
 export const routes: Routes = [
-  { path: '', component: CasesPageComponent },
+  { path: '', component: ShortlistPageComponent },
   { path: '**', redirectTo: '' }
 ];

@@ -6,14 +6,12 @@ from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cvm_platform.domain.types import (
-    CandidateCardPayload,
-    ConditionPlanDraftPayload,
+    AgentRunConfigPayload,
+    AgentRunStepPayload,
+    AgentShortlistCandidatePayload,
     EvalSummaryMetricsPayload,
-    EvidenceRefPayload,
     JsonObject,
-    NormalizedQueryPayload,
     ResumeProjectionPayload,
-    StructuredFiltersPayload,
 )
 
 from .db import Base
@@ -42,73 +40,32 @@ class JDVersionModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-class KeywordDraftJobModel(Base):
-    __tablename__ = "keyword_draft_job"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    case_id: Mapped[str] = mapped_column(String(64), index=True)
-    jd_version_id: Mapped[str] = mapped_column(String(64), index=True)
-    status: Mapped[str] = mapped_column(String(32))
-    model_version: Mapped[str] = mapped_column(String(64))
-    prompt_version: Mapped[str] = mapped_column(String(64))
-    draft_payload: Mapped[ConditionPlanDraftPayload] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-
-class ConditionPlanModel(Base):
-    __tablename__ = "condition_plan"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    case_id: Mapped[str] = mapped_column(String(64), index=True)
-    jd_version_id: Mapped[str] = mapped_column(String(64), index=True)
-    status: Mapped[str] = mapped_column(String(32))
-    must_terms: Mapped[list[str]] = mapped_column(JSON)
-    should_terms: Mapped[list[str]] = mapped_column(JSON)
-    exclude_terms: Mapped[list[str]] = mapped_column(JSON)
-    structured_filters: Mapped[StructuredFiltersPayload] = mapped_column(JSON)
-    evidence_refs: Mapped[list[EvidenceRefPayload]] = mapped_column(JSON)
-    normalized_query: Mapped[NormalizedQueryPayload] = mapped_column(JSON)
-    confirmed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-
-
-class SearchRunModel(Base):
-    __tablename__ = "search_run"
+class AgentRunModel(Base):
+    __tablename__ = "agent_run"
     __table_args__ = (UniqueConstraint("idempotency_key"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    case_id: Mapped[str] = mapped_column(String(64), index=True)
-    plan_id: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
-    page_budget: Mapped[int] = mapped_column(Integer)
-    pages_completed: Mapped[int] = mapped_column(Integer, default=0)
+    jd_text: Mapped[str] = mapped_column(Text)
+    sourcing_preference_text: Mapped[str] = mapped_column(Text)
     idempotency_key: Mapped[str] = mapped_column(String(128))
+    config: Mapped[AgentRunConfigPayload] = mapped_column(JSON)
+    current_round: Mapped[int] = mapped_column(Integer, default=0)
+    model_version: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(64))
     workflow_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     temporal_namespace: Mapped[str | None] = mapped_column(String(64), nullable=True)
     temporal_task_queue: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    langfuse_trace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    langfuse_trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    steps: Mapped[list[AgentRunStepPayload]] = mapped_column(JSON)
+    final_shortlist: Mapped[list[AgentShortlistCandidatePayload]] = mapped_column(JSON)
+    seen_resume_ids: Mapped[list[str]] = mapped_column(JSON)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class SearchRunPageModel(Base):
-    __tablename__ = "search_run_page"
-    __table_args__ = (UniqueConstraint("run_id", "page_no"),)
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    run_id: Mapped[str] = mapped_column(String(64), index=True)
-    page_no: Mapped[int] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(32))
-    upstream_request: Mapped[JsonObject] = mapped_column(JSON)
-    upstream_response: Mapped[JsonObject] = mapped_column(JSON)
-    normalized_cards: Mapped[list[CandidateCardPayload]] = mapped_column(JSON)
-    total: Mapped[int] = mapped_column(Integer)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CaseCandidateModel(Base):

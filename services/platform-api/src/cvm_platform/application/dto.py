@@ -2,21 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
 
 from cvm_platform.domain.types import (
-    CandidateCardPayload,
-    ConditionPlanDraftPayload,
+    AgentRunConfigPayload,
+    AgentRunStatus,
+    AgentRunStepPayload,
+    AgentShortlistCandidatePayload,
     EvalSummaryMetricsPayload,
-    EvidenceRefPayload,
     FailureSummaryPayload,
     JsonObject,
     LatencySummaryPayload,
-    NormalizedQueryPayload,
     QueueSummaryPayload,
     ResumeProjectionPayload,
-    SearchRunStatus,
-    StructuredFiltersPayload,
 )
 
 
@@ -42,66 +39,29 @@ class JDVersionRecord:
 
 
 @dataclass(slots=True)
-class KeywordDraftJobRecord:
+class AgentRunRecord:
     id: str
-    case_id: str
-    jd_version_id: str
-    status: str
+    status: AgentRunStatus
+    jd_text: str
+    sourcing_preference_text: str
+    idempotency_key: str
+    config: AgentRunConfigPayload
+    current_round: int
     model_version: str
     prompt_version: str
-    draft_payload: ConditionPlanDraftPayload
-    created_at: datetime
-    completed_at: datetime
-
-
-@dataclass(slots=True)
-class ConditionPlanRecord:
-    id: str
-    case_id: str
-    jd_version_id: str
-    status: Literal["draft", "confirmed"]
-    must_terms: list[str]
-    should_terms: list[str]
-    exclude_terms: list[str]
-    structured_filters: StructuredFiltersPayload
-    evidence_refs: list[EvidenceRefPayload]
-    normalized_query: NormalizedQueryPayload
-    confirmed_by: str | None
-    confirmed_at: datetime | None
-    created_at: datetime
-
-
-@dataclass(slots=True)
-class SearchRunRecord:
-    id: str
-    case_id: str
-    plan_id: str
-    status: SearchRunStatus
-    page_budget: int
-    pages_completed: int
-    idempotency_key: str
     workflow_id: str | None
     temporal_namespace: str | None
     temporal_task_queue: str | None
+    langfuse_trace_id: str | None
+    langfuse_trace_url: str | None
+    steps: list[AgentRunStepPayload]
+    final_shortlist: list[AgentShortlistCandidatePayload]
+    seen_resume_ids: list[str]
     error_code: str | None
     error_message: str | None
+    created_at: datetime
     started_at: datetime
     finished_at: datetime | None
-
-
-@dataclass(slots=True)
-class SearchRunPageRecord:
-    id: str
-    run_id: str
-    page_no: int
-    status: SearchRunStatus
-    upstream_request: JsonObject
-    upstream_response: JsonObject
-    normalized_cards: list[CandidateCardPayload]
-    total: int
-    fetched_at: datetime
-    error_code: str | None
-    error_message: str | None
 
 
 @dataclass(slots=True)
@@ -227,9 +187,3 @@ class CandidateDetailRecord:
     resume_snapshot: ResumeSnapshotRecord
     ai_analysis: ResumeAnalysisRecord | None
     verdict_history: list[VerdictHistoryRecord]
-
-
-@dataclass(slots=True)
-class KeywordDraftJobResult:
-    job: KeywordDraftJobRecord
-    plan: ConditionPlanRecord

@@ -450,12 +450,12 @@ components:
         - configPreparation
         - paramsPreparation
         - apiRequest
-        - dataProcessing
         - totalTime
       x-source-case-ids:
         - baseline_minimal
         - baseline_zero_result
         - baseline_wide_keyword
+      x-notes: live CTS responses may omit `dataProcessing`; validated consumers must tolerate that field being absent.
       properties:
         validation:
           type: integer

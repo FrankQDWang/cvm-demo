@@ -22,9 +22,6 @@ def initialize_database() -> None:
         connection.execute(text("SELECT pg_advisory_lock(871245019533682001)"))
         try:
             Base.metadata.create_all(bind=connection)
-            connection.execute(text("ALTER TABLE search_run ADD COLUMN IF NOT EXISTS workflow_id VARCHAR(128)"))
-            connection.execute(text("ALTER TABLE search_run ADD COLUMN IF NOT EXISTS temporal_namespace VARCHAR(64)"))
-            connection.execute(text("ALTER TABLE search_run ADD COLUMN IF NOT EXISTS temporal_task_queue VARCHAR(128)"))
         finally:
             connection.execute(text("SELECT pg_advisory_unlock(871245019533682001)"))
 

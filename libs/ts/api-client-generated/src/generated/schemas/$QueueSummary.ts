@@ -4,10 +4,10 @@
 /* eslint-disable */
 export const $QueueSummary = {
     properties: {
-        searchRuns: {
+        agentRuns: {
             type: 'array',
             contains: {
-                type: 'SearchRunStatusCount',
+                type: 'AgentRunStatusCount',
             },
             isRequired: true,
         },

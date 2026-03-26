@@ -10,7 +10,8 @@
 
 ## Execution Plans Active
 
-- [MVP Slice 02 JD KW SearchRun](EXEC-PLANS/active/mvp-slice-02-jd-kw-searchrun-plan.md)
+- [MVP Agent Minimum Loop](EXEC-PLANS/active/mvp-agent-minimum-loop-plan.md)
+- [MVP Slice 02 JD KW Agent Run](EXEC-PLANS/active/mvp-slice-02-jd-kw-agent-run-plan.md)
 - [MVP Slice 03 List Detail Verdict](EXEC-PLANS/active/mvp-slice-03-list-detail-verdict-plan.md)
 - [MVP Slice 04 Export Audit Ops](EXEC-PLANS/active/mvp-slice-04-export-audit-ops-plan.md)
 - [MVP Slice 05 Harness Evals Gates](EXEC-PLANS/active/mvp-slice-05-harness-evals-gates-plan.md)

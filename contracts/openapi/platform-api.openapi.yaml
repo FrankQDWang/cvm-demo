@@ -52,93 +52,43 @@ paths:
           $ref: "#/components/responses/InvalidInput"
         "404":
           $ref: "#/components/responses/NotFound"
-  /api/v1/cases/{caseId}/keyword-draft-jobs:
+  /api/v1/agent-runs:
     post:
-      operationId: createKeywordDraftJob
-      summary: Create a keyword draft
-      parameters:
-        - in: path
-          name: caseId
-          required: true
-          schema:
-            type: string
+      operationId: createAgentRun
+      summary: Create an agent run
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateKeywordDraftJobRequest"
+              $ref: "#/components/schemas/CreateAgentRunRequest"
       responses:
         "200":
-          description: Draft created
+          description: Agent run created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateKeywordDraftJobResponse"
+                $ref: "#/components/schemas/CreateAgentRunResponse"
         "400":
           $ref: "#/components/responses/InvalidInput"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "502":
-          $ref: "#/components/responses/ExternalDependencyFailure"
-        "503":
-          $ref: "#/components/responses/TransientDependencyFailure"
-  /api/v1/condition-plans/{planId}:confirm:
-    post:
-      operationId: confirmConditionPlan
-      summary: Confirm a condition plan
-      parameters:
-        - in: path
-          name: planId
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ConfirmConditionPlanRequest"
-      responses:
-        "200":
-          description: Plan confirmed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConfirmConditionPlanResponse"
-        "400":
-          $ref: "#/components/responses/InvalidInput"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/v1/search-runs:
-    post:
-      operationId: createSearchRun
-      summary: Create a search run
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateSearchRunRequest"
-      responses:
-        "200":
-          description: Search run created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CreateSearchRunResponse"
-        "400":
-          $ref: "#/components/responses/InvalidInput"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "503":
           $ref: "#/components/responses/TransientDependencyFailure"
-  /api/v1/search-runs/{runId}:
     get:
-      operationId: getSearchRun
-      summary: Get search run status
+      operationId: listAgentRuns
+      summary: List agent runs
+      responses:
+        "200":
+          description: Agent runs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunListResponse"
+  /api/v1/agent-runs/{runId}:
+    get:
+      operationId: getAgentRun
+      summary: Get agent run status and result
       parameters:
         - in: path
           name: runId
@@ -147,37 +97,11 @@ paths:
             type: string
       responses:
         "200":
-          description: Search run status
+          description: Agent run status and result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SearchRunStatusResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/v1/search-runs/{runId}/pages:
-    get:
-      operationId: getSearchRunPages
-      summary: Get search run pages
-      parameters:
-        - in: path
-          name: runId
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: pageNo
-          required: false
-          schema:
-            type: integer
-      responses:
-        "200":
-          description: Page snapshots
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SearchRunPagesResponse"
-        "400":
-          $ref: "#/components/responses/InvalidInput"
+                $ref: "#/components/schemas/AgentRunResponse"
         "404":
           $ref: "#/components/responses/NotFound"
   /api/v1/case-candidates/{candidateId}:
@@ -262,10 +186,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpsSummaryResponse"
-  /api/v1/ops/temporal/search-runs/{runId}:
+  /api/v1/ops/temporal/agent-runs/{runId}:
     get:
-      operationId: getSearchRunTemporalDiagnostic
-      summary: Get Temporal diagnostic for a search run
+      operationId: getAgentRunTemporalDiagnostic
+      summary: Get Temporal diagnostic for an agent run
       parameters:
         - in: path
           name: runId
@@ -274,11 +198,11 @@ paths:
             type: string
       responses:
         "200":
-          description: Temporal search run diagnostic
+          description: Temporal agent run diagnostic
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TemporalSearchRunDiagnosticResponse"
+                $ref: "#/components/schemas/TemporalAgentRunDiagnosticResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
@@ -344,197 +268,35 @@ components:
           type: integer
         status:
           type: string
-    EvidenceRef:
+    AgentRunConfig:
       type: object
       additionalProperties: false
-      required: [label, excerpt]
+      required: [maxRounds, roundFetchSchedule, finalTopK]
       properties:
-        label:
-          type: string
-          minLength: 1
-        excerpt:
-          type: string
-          minLength: 1
-    StructuredFilters:
-      type: object
-      additionalProperties: false
-      required: [page, pageSize]
-      properties:
-        page:
+        maxRounds:
           type: integer
           minimum: 1
-        pageSize:
+        roundFetchSchedule:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 1
+        finalTopK:
           type: integer
           minimum: 1
-        location:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        degree:
-          type: integer
-        schoolType:
-          type: integer
-        workExperienceRange:
-          type: integer
-        position:
-          type: string
-          minLength: 1
-        workContent:
-          type: string
-          minLength: 1
-        company:
-          type: string
-          minLength: 1
-        school:
-          type: string
-          minLength: 1
-    ConditionPlanDraft:
+    CreateAgentRunRequest:
       type: object
       additionalProperties: false
-      required: [mustTerms, shouldTerms, excludeTerms, structuredFilters, evidenceRefs]
+      required: [jdText, sourcingPreferenceText]
       properties:
-        mustTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        shouldTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        excludeTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        structuredFilters:
-          $ref: "#/components/schemas/StructuredFilters"
-        evidenceRefs:
-          type: array
-          items:
-            $ref: "#/components/schemas/EvidenceRef"
-    CreateKeywordDraftJobRequest:
-      type: object
-      additionalProperties: false
-      required: [jdVersionId, modelVersion, promptVersion]
-      properties:
-        jdVersionId:
+        jdText:
           type: string
           minLength: 1
-        modelVersion:
+        sourcingPreferenceText:
           type: string
           minLength: 1
-        promptVersion:
-          type: string
-          minLength: 1
-    CreateKeywordDraftJobResponse:
-      type: object
-      required: [jobId, status, planId, draft]
-      properties:
-        jobId:
-          type: string
-        status:
-          type: string
-        planId:
-          type: string
-        draft:
-          $ref: "#/components/schemas/ConditionPlanDraft"
-    ConfirmConditionPlanRequest:
-      type: object
-      additionalProperties: false
-      required:
-        [
-          mustTerms,
-          shouldTerms,
-          excludeTerms,
-          structuredFilters,
-          evidenceRefs,
-          confirmedBy,
-        ]
-      properties:
-        mustTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        shouldTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        excludeTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        structuredFilters:
-          $ref: "#/components/schemas/StructuredFilters"
-        evidenceRefs:
-          type: array
-          items:
-            $ref: "#/components/schemas/EvidenceRef"
-        confirmedBy:
-          type: string
-          minLength: 1
-    ConfirmConditionPlanResponse:
-      type: object
-      additionalProperties: false
-      required: [planId, status, normalizedQuery]
-      properties:
-        planId:
-          type: string
-        status:
-          type: string
-        normalizedQuery:
-          $ref: "#/components/schemas/NormalizedQuery"
-    NormalizedQuery:
-      type: object
-      additionalProperties: false
-      required: [jd, mustTerms, shouldTerms, excludeTerms, structuredFilters, keyword]
-      properties:
-        jd:
-          type: string
-          minLength: 1
-        mustTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        shouldTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        excludeTerms:
-          type: array
-          items:
-            type: string
-            minLength: 1
-        structuredFilters:
-          $ref: "#/components/schemas/StructuredFilters"
-        keyword:
-          type: string
-          minLength: 1
-    CreateSearchRunRequest:
-      type: object
-      additionalProperties: false
-      required: [caseId, planId, pageBudget, idempotencyKey]
-      properties:
-        caseId:
-          type: string
-          minLength: 1
-        planId:
-          type: string
-          minLength: 1
-        pageBudget:
-          type: integer
-          minimum: 1
-        idempotencyKey:
-          type: string
-          minLength: 1
-    CreateSearchRunResponse:
+    CreateAgentRunResponse:
       type: object
       additionalProperties: false
       required: [runId, status]
@@ -543,23 +305,200 @@ components:
           type: string
         status:
           type: string
-    SearchRunStatusResponse:
+    AgentRunStep:
       type: object
       additionalProperties: false
-      required: [runId, status, progress, pageCount]
+      required: [stepNo, stepType, title, status, summary, payload, occurredAt]
+      properties:
+        stepNo:
+          type: integer
+          minimum: 1
+        roundNo:
+          type:
+            - integer
+            - "null"
+          minimum: 1
+        stepType:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        occurredAt:
+          type: string
+          format: date-time
+    AgentShortlistCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          externalIdentityId,
+          name,
+          title,
+          company,
+          location,
+          summary,
+          reason,
+          score,
+          sourceRound,
+        ]
+      properties:
+        externalIdentityId:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        company:
+          type: string
+        location:
+          type: string
+        summary:
+          type: string
+        reason:
+          type: string
+        score:
+          type: number
+        sourceRound:
+          type: integer
+          minimum: 1
+    AgentRunListItem:
+      type: object
+      additionalProperties: false
+      required: [runId, status, currentRound, createdAt]
       properties:
         runId:
           type: string
         status:
           type: string
-        progress:
-          type: number
-        pageCount:
+        currentRound:
           type: integer
-        errorSummary:
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
           type:
             - string
             - "null"
+          format: date-time
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        langfuseTraceUrl:
+          type:
+            - string
+            - "null"
+    AgentRunListResponse:
+      type: object
+      additionalProperties: false
+      required: [runs]
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRunListItem"
+    AgentRunResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          runId,
+          status,
+          jdText,
+          sourcingPreferenceText,
+          config,
+          currentRound,
+          modelVersion,
+          promptVersion,
+          workflowId,
+          temporalNamespace,
+          temporalTaskQueue,
+          steps,
+          finalShortlist,
+          seenResumeIds,
+          createdAt,
+          startedAt,
+        ]
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        jdText:
+          type: string
+        sourcingPreferenceText:
+          type: string
+        config:
+          $ref: "#/components/schemas/AgentRunConfig"
+        currentRound:
+          type: integer
+          minimum: 0
+        modelVersion:
+          type: string
+        promptVersion:
+          type: string
+        workflowId:
+          type:
+            - string
+            - "null"
+        temporalNamespace:
+          type:
+            - string
+            - "null"
+        temporalTaskQueue:
+          type:
+            - string
+            - "null"
+        langfuseTraceId:
+          type:
+            - string
+            - "null"
+        langfuseTraceUrl:
+          type:
+            - string
+            - "null"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRunStep"
+        finalShortlist:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentShortlistCandidate"
+        seenResumeIds:
+          type: array
+          items:
+            type: string
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
     CandidateCard:
       type: object
       additionalProperties: false
@@ -579,43 +518,6 @@ components:
           type: string
         summary:
           type: string
-    SearchRunPageSnapshot:
-      type: object
-      additionalProperties: false
-      required: [pageNo, status, fetchedAt, candidates, total]
-      properties:
-        pageNo:
-          type: integer
-        status:
-          type: string
-        fetchedAt:
-          type: string
-          format: date-time
-        candidates:
-          type: array
-          items:
-            $ref: "#/components/schemas/CandidateCard"
-        total:
-          type: integer
-        errorCode:
-          type:
-            - string
-            - "null"
-        errorMessage:
-          type:
-            - string
-            - "null"
-    SearchRunPagesResponse:
-      type: object
-      additionalProperties: false
-      required: [runId, snapshots]
-      properties:
-        runId:
-          type: string
-        snapshots:
-          type: array
-          items:
-            $ref: "#/components/schemas/SearchRunPageSnapshot"
     ResumeEducationItem:
       type: object
       additionalProperties: false
@@ -852,7 +754,7 @@ components:
           type: string
         value:
           type: number
-    SearchRunStatusCount:
+    AgentRunStatusCount:
       type: object
       additionalProperties: false
       required: [status, count]
@@ -861,7 +763,7 @@ components:
           type: string
         count:
           type: integer
-    SearchRunFailureCount:
+    AgentRunFailureCount:
       type: object
       additionalProperties: false
       required: [code, count]
@@ -873,27 +775,27 @@ components:
     QueueSummary:
       type: object
       additionalProperties: false
-      required: [searchRuns]
+      required: [agentRuns]
       properties:
-        searchRuns:
+        agentRuns:
           type: array
           items:
-            $ref: "#/components/schemas/SearchRunStatusCount"
+            $ref: "#/components/schemas/AgentRunStatusCount"
     FailureSummary:
       type: object
       additionalProperties: false
-      required: [searchRuns]
+      required: [agentRuns]
       properties:
-        searchRuns:
+        agentRuns:
           type: array
           items:
-            $ref: "#/components/schemas/SearchRunFailureCount"
+            $ref: "#/components/schemas/AgentRunFailureCount"
     LatencySummary:
       type: object
       additionalProperties: false
-      required: [avgSearchRunSeconds]
+      required: [avgAgentRunSeconds]
       properties:
-        avgSearchRunSeconds:
+        avgAgentRunSeconds:
           type: number
     OpsVersionInfo:
       type: object
@@ -940,7 +842,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricItem"
-    TemporalSearchRunDiagnosticResponse:
+    TemporalAgentRunDiagnosticResponse:
       type: object
       additionalProperties: false
       required:
@@ -950,6 +852,9 @@ components:
           namespace,
           taskQueue,
           appStatus,
+          currentRound,
+          stepCount,
+          finalShortlistCount,
           temporalExecutionFound,
           visibilityIndexed,
           visibilityBackend,
@@ -966,6 +871,15 @@ components:
           type: string
         appStatus:
           type: string
+        currentRound:
+          type: integer
+          minimum: 0
+        stepCount:
+          type: integer
+          minimum: 0
+        finalShortlistCount:
+          type: integer
+          minimum: 0
         temporalExecutionFound:
           type: boolean
         temporalExecutionStatus:
@@ -987,6 +901,22 @@ components:
             - "null"
           format: date-time
         error:
+          type:
+            - string
+            - "null"
+        errorCode:
+          type:
+            - string
+            - "null"
+        errorMessage:
+          type:
+            - string
+            - "null"
+        stopReason:
+          type:
+            - string
+            - "null"
+        langfuseTraceUrl:
           type:
             - string
             - "null"

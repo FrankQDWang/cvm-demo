@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     build_id: str = "local-dev"
     database_url: str = "postgresql+psycopg://cvm:cvm@localhost:5432/cvm"
     temporal_host: str = "localhost:7233"
-    temporal_task_queue: str = "cvm-search-runs"
+    temporal_task_queue: str = "cvm-agent-runs"
     temporal_namespace: str = "default"
     temporal_visibility_backend: str = "opensearch"
     temporal_ui_base_url: str = "http://127.0.0.1:8080"
@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(default="", validation_alias=AliasChoices("CVM_LLM_API_KEY", "OPENAI_API_KEY"))
     llm_base_url: str = Field(default="", validation_alias=AliasChoices("CVM_LLM_BASE_URL", "OPENAI_BASE_URL"))
     llm_timeout_seconds: int = 30
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_base_url: str = ""
+    langfuse_environment: str = "local"
     resume_source_mode: str = "mock"
     cts_base_url: str = "https://link.hewa.cn"
     cts_tenant_key: str = ""
@@ -32,6 +37,10 @@ class Settings(BaseSettings):
     allow_sensitive_export: bool = False
     exports_dir: Path = Path("var/exports")
     cors_origins: str = "http://localhost:4200"
+    agent_max_rounds: int = Field(default=3, ge=3, le=5)
+    agent_round_fetch_schedule: str = "10,5,5"
+    agent_final_top_k: int = 5
+    agent_prompt_version: str = "agent-loop-v1"
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -24,7 +24,7 @@ Rules:
 Rules:
 
 - Do not expand this slice into export, audit, ops, or CI/harness work.
-- SearchRun orchestration changes are only allowed when required to support the AI timeout/degrade behavior in scope.
+- AgentRun orchestration changes are only allowed when required to support the AI timeout/degrade behavior in scope.
 
 ## Allowed Write Paths
 
@@ -43,7 +43,6 @@ Rules:
 
 - `docs/_generated/**`
 - `apps/web-ops/**`
-- `apps/web-evals/**`
 - `.github/**`
 - Any path outside the allowed write set
 
@@ -57,7 +56,7 @@ Rules:
 ## Implementation Steps
 
 1. Make candidate browsing reviewer-grade: preserve list state, expose the required minimum fields and missing-field fallbacks, and add match-highlight/filter/sort behavior tied to snapshot-scoped data.
-2. Split detail loading so raw resume content remains available even when AI assistance is pending, slow, or failed; add `KeywordDraftWorkflow` / `ResumeAnalysisWorkflow` style async behavior where required by in-scope rows.
+2. Split detail loading so raw resume content remains available even when AI assistance is pending, slow, or failed; add `AgentRunWorkflow`-compatible async AI behavior where required by in-scope rows.
 3. Finish verdict and candidate-pool semantics: enforce `No` reason requirements, support explicit pool add/remove lifecycle, preserve history, and surface reviewer conflicts.
 4. Add regression tests for async AI timeout/degrade behavior, evidence rendering, verdict transitions, and local review-state retention.
 5. Update Slice 03 rows in [Requirement Traceability](../../PRODUCT/requirement-traceability.md) and write the close-out with exact proof.

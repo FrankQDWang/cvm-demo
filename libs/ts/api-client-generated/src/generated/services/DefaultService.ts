@@ -2,9 +2,11 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AgentRunListResponse } from '../models/AgentRunListResponse';
+import type { AgentRunResponse } from '../models/AgentRunResponse';
 import type { CandidateDetailResponse } from '../models/CandidateDetailResponse';
-import type { ConfirmConditionPlanRequest } from '../models/ConfirmConditionPlanRequest';
-import type { ConfirmConditionPlanResponse } from '../models/ConfirmConditionPlanResponse';
+import type { CreateAgentRunRequest } from '../models/CreateAgentRunRequest';
+import type { CreateAgentRunResponse } from '../models/CreateAgentRunResponse';
 import type { CreateCaseRequest } from '../models/CreateCaseRequest';
 import type { CreateCaseResponse } from '../models/CreateCaseResponse';
 import type { CreateEvalRunRequest } from '../models/CreateEvalRunRequest';
@@ -13,16 +15,10 @@ import type { CreateExportRequest } from '../models/CreateExportRequest';
 import type { CreateExportResponse } from '../models/CreateExportResponse';
 import type { CreateJdVersionRequest } from '../models/CreateJdVersionRequest';
 import type { CreateJdVersionResponse } from '../models/CreateJdVersionResponse';
-import type { CreateKeywordDraftJobRequest } from '../models/CreateKeywordDraftJobRequest';
-import type { CreateKeywordDraftJobResponse } from '../models/CreateKeywordDraftJobResponse';
-import type { CreateSearchRunRequest } from '../models/CreateSearchRunRequest';
-import type { CreateSearchRunResponse } from '../models/CreateSearchRunResponse';
 import type { OpsSummaryResponse } from '../models/OpsSummaryResponse';
 import type { SaveVerdictRequest } from '../models/SaveVerdictRequest';
 import type { SaveVerdictResponse } from '../models/SaveVerdictResponse';
-import type { SearchRunPagesResponse } from '../models/SearchRunPagesResponse';
-import type { SearchRunStatusResponse } from '../models/SearchRunStatusResponse';
-import type { TemporalSearchRunDiagnosticResponse } from '../models/TemporalSearchRunDiagnosticResponse';
+import type { TemporalAgentRunDiagnosticResponse } from '../models/TemporalAgentRunDiagnosticResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -74,126 +70,55 @@ export class DefaultService {
         });
     }
     /**
-     * Create a keyword draft
-     * @returns CreateKeywordDraftJobResponse Draft created
+     * Create an agent run
+     * @returns CreateAgentRunResponse Agent run created
      * @throws ApiError
      */
-    public static createKeywordDraftJob({
-        caseId,
+    public static createAgentRun({
         requestBody,
     }: {
-        caseId: string,
-        requestBody: CreateKeywordDraftJobRequest,
-    }): CancelablePromise<CreateKeywordDraftJobResponse> {
+        requestBody: CreateAgentRunRequest,
+    }): CancelablePromise<CreateAgentRunResponse> {
         return __request(OpenAPI, {
             method: 'POST',
-            url: '/api/v1/cases/{caseId}/keyword-draft-jobs',
-            path: {
-                'caseId': caseId,
-            },
+            url: '/api/v1/agent-runs',
             body: requestBody,
             mediaType: 'application/json',
             errors: {
                 400: `Invalid input or contract validation failure.`,
-                404: `Requested resource was not found.`,
-                502: `A required upstream dependency returned a non-retryable failure.`,
-                503: `A required upstream dependency is temporarily unavailable or retryable.`,
-            },
-        });
-    }
-    /**
-     * Confirm a condition plan
-     * @returns ConfirmConditionPlanResponse Plan confirmed
-     * @throws ApiError
-     */
-    public static confirmConditionPlan({
-        planId,
-        requestBody,
-    }: {
-        planId: string,
-        requestBody: ConfirmConditionPlanRequest,
-    }): CancelablePromise<ConfirmConditionPlanResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/condition-plans/{planId}:confirm',
-            path: {
-                'planId': planId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                400: `Invalid input or contract validation failure.`,
-                404: `Requested resource was not found.`,
-            },
-        });
-    }
-    /**
-     * Create a search run
-     * @returns CreateSearchRunResponse Search run created
-     * @throws ApiError
-     */
-    public static createSearchRun({
-        requestBody,
-    }: {
-        requestBody: CreateSearchRunRequest,
-    }): CancelablePromise<CreateSearchRunResponse> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v1/search-runs',
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                400: `Invalid input or contract validation failure.`,
-                404: `Requested resource was not found.`,
                 409: `The current resource state does not allow this operation.`,
                 503: `A required upstream dependency is temporarily unavailable or retryable.`,
             },
         });
     }
     /**
-     * Get search run status
-     * @returns SearchRunStatusResponse Search run status
+     * List agent runs
+     * @returns AgentRunListResponse Agent runs
      * @throws ApiError
      */
-    public static getSearchRun({
-        runId,
-    }: {
-        runId: string,
-    }): CancelablePromise<SearchRunStatusResponse> {
+    public static listAgentRuns(): CancelablePromise<AgentRunListResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/api/v1/search-runs/{runId}',
-            path: {
-                'runId': runId,
-            },
-            errors: {
-                404: `Requested resource was not found.`,
-            },
+            url: '/api/v1/agent-runs',
         });
     }
     /**
-     * Get search run pages
-     * @returns SearchRunPagesResponse Page snapshots
+     * Get agent run status and result
+     * @returns AgentRunResponse Agent run status and result
      * @throws ApiError
      */
-    public static getSearchRunPages({
+    public static getAgentRun({
         runId,
-        pageNo,
     }: {
         runId: string,
-        pageNo?: number,
-    }): CancelablePromise<SearchRunPagesResponse> {
+    }): CancelablePromise<AgentRunResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/api/v1/search-runs/{runId}/pages',
+            url: '/api/v1/agent-runs/{runId}',
             path: {
                 'runId': runId,
             },
-            query: {
-                'pageNo': pageNo,
-            },
             errors: {
-                400: `Invalid input or contract validation failure.`,
                 404: `Requested resource was not found.`,
             },
         });
@@ -280,18 +205,18 @@ export class DefaultService {
         });
     }
     /**
-     * Get Temporal diagnostic for a search run
-     * @returns TemporalSearchRunDiagnosticResponse Temporal search run diagnostic
+     * Get Temporal diagnostic for an agent run
+     * @returns TemporalAgentRunDiagnosticResponse Temporal agent run diagnostic
      * @throws ApiError
      */
-    public static getSearchRunTemporalDiagnostic({
+    public static getAgentRunTemporalDiagnostic({
         runId,
     }: {
         runId: string,
-    }): CancelablePromise<TemporalSearchRunDiagnosticResponse> {
+    }): CancelablePromise<TemporalAgentRunDiagnosticResponse> {
         return __request(OpenAPI, {
             method: 'GET',
-            url: '/api/v1/ops/temporal/search-runs/{runId}',
+            url: '/api/v1/ops/temporal/agent-runs/{runId}',
             path: {
                 'runId': runId,
             },

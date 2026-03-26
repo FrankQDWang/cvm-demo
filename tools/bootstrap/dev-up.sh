@@ -22,7 +22,6 @@ evals_web_port="${CVM_EVALS_WEB_PORT:-4202}"
 
 ./tools/bootstrap/write-runtime-config.sh apps/web-user
 ./tools/bootstrap/write-runtime-config.sh apps/web-ops
-./tools/bootstrap/write-runtime-config.sh apps/web-evals
 
 runner=()
 if command -v mise >/dev/null 2>&1; then
@@ -93,18 +92,19 @@ run_with_runtime make codegen
 docker compose up -d
 wait_for_service postgres healthy
 wait_for_service temporal healthy
+wait_for_service web-evals healthy
 
 ensure_running api "${runner[@]}" uv run uvicorn cvm_platform.main:app --factory --app-dir services/platform-api/src --host 0.0.0.0 --port "$api_port"
 ensure_running worker "${runner[@]}" uv run python -m cvm_worker.main
 ensure_running web-user "${runner[@]}" pnpm --dir apps/web-user exec ng serve --host 0.0.0.0 --port "$user_web_port"
 ensure_running web-ops "${runner[@]}" pnpm --dir apps/web-ops exec ng serve --host 0.0.0.0 --port "$ops_web_port"
-ensure_running web-evals "${runner[@]}" pnpm --dir apps/web-evals exec ng serve --host 0.0.0.0 --port "$evals_web_port"
 
 echo
 echo "CVM started:"
 echo "- User Web: http://localhost:${user_web_port}"
 echo "- Ops Web: http://localhost:${ops_web_port}"
-echo "- Evals Web: http://localhost:${evals_web_port}"
+echo "- Langfuse UI: http://localhost:${evals_web_port}"
+echo "- Langfuse Login: ${CVM_LANGFUSE_INIT_USER_EMAIL:-admin@local.test} / ${CVM_LANGFUSE_INIT_USER_PASSWORD:-local-admin-pass}"
 echo "- API: http://localhost:${api_port}"
 echo "- Temporal UI: http://localhost:8080"
 echo "- Logs: var/log/"

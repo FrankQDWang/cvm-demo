@@ -3,17 +3,14 @@ from __future__ import annotations
 from typing import Protocol
 
 from cvm_platform.application.dto import (
+    AgentRunRecord,
     AuditLogRecord,
     CandidateRecord,
-    ConditionPlanRecord,
     EvalRunRecord,
     ExportJobRecord,
     JDVersionRecord,
-    KeywordDraftJobRecord,
     ResumeAnalysisRecord,
     ResumeSnapshotRecord,
-    SearchRunPageRecord,
-    SearchRunRecord,
     VerdictHistoryRecord,
     CaseRecord,
 )
@@ -34,29 +31,21 @@ class PlansRepository(Protocol):
 
     def save_jd_version(self, jd_version: JDVersionRecord) -> JDVersionRecord: ...
 
-    def save_keyword_draft_job(self, job: KeywordDraftJobRecord) -> KeywordDraftJobRecord: ...
 
-    def get_plan(self, plan_id: str) -> ConditionPlanRecord | None: ...
+class AgentRunsRepository(Protocol):
+    def find_by_idempotency_key(self, idempotency_key: str) -> AgentRunRecord | None: ...
 
-    def save_plan(self, plan: ConditionPlanRecord) -> ConditionPlanRecord: ...
+    def get_run(self, run_id: str) -> AgentRunRecord | None: ...
 
+    def save_run(self, run: AgentRunRecord) -> AgentRunRecord: ...
 
-class SearchRunsRepository(Protocol):
-    def find_by_idempotency_key(self, idempotency_key: str) -> SearchRunRecord | None: ...
-
-    def get_run(self, run_id: str) -> SearchRunRecord | None: ...
-
-    def save_run(self, run: SearchRunRecord) -> SearchRunRecord: ...
-
-    def list_pages(self, run_id: str, page_no: int | None = None) -> list[SearchRunPageRecord]: ...
-
-    def save_page(self, page: SearchRunPageRecord) -> SearchRunPageRecord: ...
+    def list_runs(self) -> list[AgentRunRecord]: ...
 
     def count_by_status(self) -> dict[str, int]: ...
 
     def count_failures_by_error_code(self) -> dict[str | None, int]: ...
 
-    def list_finished_runs(self) -> list[SearchRunRecord]: ...
+    def list_finished_runs(self) -> list[AgentRunRecord]: ...
 
 
 class CandidatesRepository(Protocol):
@@ -102,7 +91,7 @@ class AuditLogRepository(Protocol):
 class PlatformUnitOfWork(Protocol):
     cases: CasesRepository
     plans: PlansRepository
-    search_runs: SearchRunsRepository
+    agent_runs: AgentRunsRepository
     candidates: CandidatesRepository
     exports: ExportsRepository
     eval_runs: EvalRunsRepository

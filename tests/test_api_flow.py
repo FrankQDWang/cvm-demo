@@ -2,128 +2,41 @@ from __future__ import annotations
 
 import httpx
 
-from cvm_testkit import unique_idempotency_key, wait_for_search_run, wait_for_temporal_diagnostic
-from tests.support.flow import bootstrap_case_flow, read_json
+from cvm_testkit import unique_idempotency_key, wait_for_agent_run, wait_for_agent_temporal_diagnostic
+from tests.support.flow import read_json
 
 
-def test_mainline_flow(client: httpx.Client) -> None:
-    case, _, draft = bootstrap_case_flow(client)
-    confirmed = read_json(client.post(
-        f"/api/v1/condition-plans/{draft['planId']}:confirm",
+def test_mainline_agent_flow(client: httpx.Client) -> None:
+    created = read_json(client.post(
+        "/api/v1/agent-runs",
         json={
-            **draft["draft"],
-            "mustTerms": ["Python"],
-            "shouldTerms": ["Agent"],
-            "excludeTerms": [],
-            "structuredFilters": {"page": 1, "pageSize": 5},
-            "confirmedBy": "consultant-1",
+            "jdText": "需要一名 AI Agent 工程师，熟悉 Python、ReAct、workflow orchestration、search systems。",
+            "sourcingPreferenceText": "优先有 agent、eval、retrieval、招聘或流程编排经验，最好在上海或杭州。",
         },
     ))
-    run = read_json(client.post(
-        "/api/v1/search-runs",
-        json={
-            "caseId": case["caseId"],
-            "planId": confirmed["planId"],
-            "pageBudget": 1,
-            "idempotencyKey": unique_idempotency_key("test-mainline-run"),
-        },
-    ))
-    run_status = wait_for_search_run(client, run["runId"])
-    diagnostic = wait_for_temporal_diagnostic(client, run["runId"])
-    pages = read_json(client.get(f"/api/v1/search-runs/{run['runId']}/pages"))
-    assert pages["snapshots"][0]["candidates"]
-    candidate_id = pages["snapshots"][0]["candidates"][0]["candidateId"]
-    detail = read_json(client.get(f"/api/v1/case-candidates/{candidate_id}"))
-    verdict = read_json(client.put(
-        f"/api/v1/case-candidates/{candidate_id}/verdict",
-        json={"verdict": "Match", "reasons": ["core fit"], "notes": "strong", "actorId": "consultant-1"},
-    ))
-    export = read_json(client.post(
-        "/api/v1/exports",
-        json={"caseId": case["caseId"], "maskPolicy": "masked", "reason": "weekly shortlist", "idempotencyKey": unique_idempotency_key("exp-mainline")},
-    ))
+    run = wait_for_agent_run(client, created["runId"])
+    diagnostic = wait_for_agent_temporal_diagnostic(client, created["runId"])
 
-    assert run_status["status"] == "completed"
-    assert diagnostic["workflowId"] == f"search-run-{run['runId']}"
-    assert diagnostic["namespace"] == "default"
+    assert run["status"] == "completed"
+    assert run["workflowId"] == f"agent-run-{created['runId']}"
+    assert len(run["finalShortlist"]) == 5
+    assert len({candidate["externalIdentityId"] for candidate in run["finalShortlist"]}) == 5
+    assert any(step["stepType"] == "strategy" for step in run["steps"])
+    assert any(step["stepType"] == "search" for step in run["steps"])
+    assert any(step["stepType"] == "analysis" for step in run["steps"])
+    assert any(step["stepType"] == "reflection" for step in run["steps"])
+    assert any(step["stepType"] == "finalize" for step in run["steps"])
+    assert run["langfuseTraceUrl"] is not None
+    assert diagnostic["workflowId"] == f"agent-run-{created['runId']}"
     assert diagnostic["temporalExecutionFound"] is True
     assert diagnostic["visibilityIndexed"] is True
-    assert len(pages["snapshots"]) == 1
-    assert detail["candidate"]["candidateId"] == candidate_id
-    assert verdict["latestVerdict"] == "Match"
-    assert export["status"] == "completed"
-
-
-def test_zero_results_and_parameter_anomaly_are_distinct(client: httpx.Client) -> None:
-    case, _, draft = bootstrap_case_flow(client)
-
-    zero_plan = read_json(client.post(
-        f"/api/v1/condition-plans/{draft['planId']}:confirm",
-        json={
-            **draft["draft"],
-            "mustTerms": ["unlikely-non-match-term"],
-            "shouldTerms": [],
-            "structuredFilters": {"page": 1, "pageSize": 5},
-            "confirmedBy": "consultant-1",
-        },
-    ))
-    zero_run = read_json(client.post(
-        "/api/v1/search-runs",
-        json={
-            "caseId": case["caseId"],
-            "planId": zero_plan["planId"],
-            "pageBudget": 1,
-            "idempotencyKey": unique_idempotency_key("zero-run"),
-        },
-    ))
-    zero_status = wait_for_search_run(client, zero_run["runId"])
-    zero_diagnostic = wait_for_temporal_diagnostic(client, zero_run["runId"])
-    zero_pages = read_json(client.get(f"/api/v1/search-runs/{zero_run['runId']}/pages"))
-
-    assert zero_status["status"] == "completed"
-    assert zero_diagnostic["temporalExecutionFound"] is True
-    assert zero_diagnostic["visibilityIndexed"] is True
-    assert zero_pages["snapshots"][0]["total"] == 0
-    assert zero_pages["snapshots"][0]["errorCode"] is None
-
-    anomaly_case, _, anomaly_draft = bootstrap_case_flow(client)
-    anomaly_plan = client.post(
-        f"/api/v1/condition-plans/{anomaly_draft['planId']}:confirm",
-        json={
-            **anomaly_draft["draft"],
-            "structuredFilters": {"page": 1, "pageSize": 0},
-            "confirmedBy": "consultant-1",
-        },
-    )
-
-    assert anomaly_plan.status_code == 400
-    assert anomaly_plan.json()["code"] == "INVALID_REQUEST"
+    assert diagnostic["currentRound"] >= 1
+    assert diagnostic["finalShortlistCount"] == 5
+    assert diagnostic["langfuseTraceUrl"] == run["langfuseTraceUrl"]
 
 
 def test_sensitive_export_is_blocked_in_local_mode(client: httpx.Client) -> None:
-    case, _, draft = bootstrap_case_flow(client)
-    confirmed = read_json(client.post(
-        f"/api/v1/condition-plans/{draft['planId']}:confirm",
-        json={
-            **draft["draft"],
-            "mustTerms": ["Python"],
-            "shouldTerms": ["Agent"],
-            "excludeTerms": [],
-            "structuredFilters": {"page": 1, "pageSize": 5},
-            "confirmedBy": "consultant-1",
-        },
-    ))
-    run = read_json(client.post(
-        "/api/v1/search-runs",
-        json={
-            "caseId": case["caseId"],
-            "planId": confirmed["planId"],
-            "pageBudget": 1,
-            "idempotencyKey": unique_idempotency_key("export-run"),
-        },
-    ))
-    wait_for_search_run(client, run["runId"])
-    diagnostic = wait_for_temporal_diagnostic(client, run["runId"])
+    case = read_json(client.post("/api/v1/cases", json={"title": "AI Native Recruiter", "ownerTeamId": "team-cn"}))
     pages = read_json(client.get("/api/v1/ops/summary"))
     blocked = client.post(
         "/api/v1/exports",
@@ -133,6 +46,29 @@ def test_sensitive_export_is_blocked_in_local_mode(client: httpx.Client) -> None
     assert pages["version"]["api"] == "0.1.0"
     assert pages["version"]["apiBuildId"]
     assert pages["version"]["temporalVisibilityBackend"] == "opensearch"
-    assert diagnostic["workflowId"] == f"search-run-{run['runId']}"
     assert blocked.status_code == 403
     assert blocked.json()["code"] == "NO_CONTACT_PERMISSION"
+
+
+def test_agent_run_list_returns_latest_run_first(client: httpx.Client) -> None:
+    first = read_json(client.post(
+        "/api/v1/agent-runs",
+        json={
+            "jdText": "Need Python AI agent engineer with retrieval experience",
+            "sourcingPreferenceText": "Prefer agent tooling background",
+        },
+    ))
+    second = read_json(client.post(
+        "/api/v1/agent-runs",
+        json={
+            "jdText": "Need recruiter tooling engineer with Python and workflow experience",
+            "sourcingPreferenceText": "Prefer evals and search systems background",
+        },
+    ))
+
+    wait_for_agent_run(client, first["runId"])
+    wait_for_agent_run(client, second["runId"])
+    listing = read_json(client.get("/api/v1/agent-runs"))
+
+    assert listing["runs"][0]["runId"] == second["runId"]
+    assert listing["runs"][1]["runId"] == first["runId"]

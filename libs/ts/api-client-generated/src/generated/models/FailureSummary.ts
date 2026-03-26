@@ -2,8 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { SearchRunFailureCount } from './SearchRunFailureCount';
+import type { AgentRunFailureCount } from './AgentRunFailureCount';
 export type FailureSummary = {
-    searchRuns: Array<SearchRunFailureCount>;
+    agentRuns: Array<AgentRunFailureCount>;
 };
 

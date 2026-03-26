@@ -9,8 +9,8 @@ from temporalio.api.enums.v1 import WorkflowExecutionStatus
 from temporalio.client import Client
 from temporalio.service import RPCError
 
-from cvm_platform.application.dto import SearchRunRecord
-from cvm_platform.infrastructure.boundary_models import TemporalDiagnosticModel
+from cvm_platform.application.dto import AgentRunRecord
+from cvm_platform.infrastructure.boundary_models import AgentRunTemporalDiagnosticModel
 from cvm_platform.settings.config import Settings
 
 
@@ -35,17 +35,27 @@ def build_temporal_ui_url(settings: Settings, namespace: str, workflow_id: str) 
     return f"{settings.temporal_ui_base_url.rstrip('/')}/namespaces/{namespace}/workflows?query={query}"
 
 
-async def inspect_search_run(run: SearchRunRecord, settings: Settings) -> dict[str, object]:
-    workflow_id = run.workflow_id or f"search-run-{run.id}"
+def _stop_reason(run: AgentRunRecord) -> str | None:
+    for step in reversed(run.steps):
+        if step["stepType"] == "stop":
+            return step["summary"]
+    return None
+
+
+async def inspect_agent_run(run: AgentRunRecord, settings: Settings) -> dict[str, object]:
+    workflow_id = run.workflow_id or f"agent-run-{run.id}"
     namespace = run.temporal_namespace or settings.temporal_namespace
     task_queue = run.temporal_task_queue or settings.temporal_task_queue
 
-    diagnostic = TemporalDiagnosticModel(
+    diagnostic = AgentRunTemporalDiagnosticModel(
         runId=run.id,
         workflowId=workflow_id,
         namespace=namespace,
         taskQueue=task_queue,
         appStatus=run.status,
+        currentRound=run.current_round,
+        stepCount=len(run.steps),
+        finalShortlistCount=len(run.final_shortlist),
         temporalExecutionFound=False,
         temporalExecutionStatus=None,
         visibilityIndexed=False,
@@ -53,6 +63,10 @@ async def inspect_search_run(run: SearchRunRecord, settings: Settings) -> dict[s
         startedAt=run.started_at.isoformat() if run.started_at else None,
         closedAt=run.finished_at.isoformat() if run.finished_at else None,
         error=None,
+        errorCode=run.error_code,
+        errorMessage=run.error_message,
+        stopReason=_stop_reason(run),
+        langfuseTraceUrl=run.langfuse_trace_url,
         temporalUiUrl=build_temporal_ui_url(settings, namespace, workflow_id),
     )
 

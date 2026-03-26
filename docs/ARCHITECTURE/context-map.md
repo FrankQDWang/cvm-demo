@@ -4,16 +4,18 @@
 
 - `apps/web-user`: User-facing recruiting workbench.
 - `apps/web-ops`: Internal monitoring web.
-- `apps/web-evals`: Internal evaluation web.
+- `web-evals`: Self-hosted Langfuse web UI on port `4202`.
 - `services/platform-api`: FastAPI API and orchestration boundary.
 - `services/temporal-worker`: Long-running workflow execution.
+- `langfuse-worker`: Langfuse ingestion and processing worker.
+- `langfuse-postgres` / `langfuse-clickhouse` / `langfuse-minio` / `langfuse-redis`: self-hosted Langfuse backing stores.
 - `postgres`: Source of record for business data and projections.
 - `temporal`: Local workflow engine for recoverable background runs.
 
 ## Business Contexts
 
-- `Case & JD`: `JDCase`, `JDVersion`, `KeywordDraftJob`, `ConditionPlan`
-- `Search Orchestration`: `SearchRun`, `SearchRunPageSnapshot`
+- `Case & JD`: `JDCase`, `JDVersion`, `AgentRun`
+- `Agent Search Loop`: `AgentRun`, CTS search strategy snapshots, round steps, final shortlist
 - `Candidate Review`: `CaseCandidate`, `ResumeSnapshot`, `ResumeAnalysis`, `VerdictHistory`
 - `Export & Audit`: `ExportJob`, `AuditEvent`
 - `Ops & Evals`: `OpsSummary`, `EvalRun`

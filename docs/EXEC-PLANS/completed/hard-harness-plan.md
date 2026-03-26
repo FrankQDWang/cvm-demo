@@ -14,7 +14,7 @@ Turn the repository from soft local checks into a repo-local hard harness:
 
 - `contracts/openapi/platform-api.openapi.yaml`
 - `services/platform-api`
-- `apps/web-user`, `apps/web-ops`, `apps/web-evals`
+- `apps/web-user`, `apps/web-ops`, `services/eval-runner`
 - `libs/ts/platform-api-client`
 - repository governance files under root / `.github/` / `tools/ci/`
 

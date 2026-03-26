@@ -47,12 +47,17 @@ def test_wait_helpers_timeout_with_clear_message(monkeypatch) -> None:
             return PendingResponse()
 
     with pytest.raises(RuntimeError, match="未在 1 秒内完成"):
-        integration.wait_for_search_run(PendingClient(), "run_1", timeout_seconds=1.0, poll_interval_seconds=0.1)
+        integration.wait_for_agent_run(PendingClient(), "run_1", timeout_seconds=1.0, poll_interval_seconds=0.1)
 
     timeline = iter([0.0, 100.0])
     monkeypatch.setattr(integration.time, "monotonic", lambda: next(timeline))
     with pytest.raises(RuntimeError, match="Temporal visibility 索引"):
-        integration.wait_for_temporal_diagnostic(PendingClient(), "run_1", timeout_seconds=1.0, poll_interval_seconds=0.1)
+        integration.wait_for_agent_temporal_diagnostic(
+            PendingClient(),
+            "run_1",
+            timeout_seconds=1.0,
+            poll_interval_seconds=0.1,
+        )
 
 
 def test_eval_runner_main_supports_success_failure_and_invalid_suite(monkeypatch) -> None:

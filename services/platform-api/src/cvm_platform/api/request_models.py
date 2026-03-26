@@ -4,17 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cvm_platform.infrastructure.boundary_models import StructuredFiltersBoundaryModel
-
-
 STRICT_MODEL_CONFIG = ConfigDict(extra="forbid", strict=True)
-
-
-class EvidenceRefRequestModel(BaseModel):
-    model_config = STRICT_MODEL_CONFIG
-
-    label: str = Field(min_length=1)
-    excerpt: str = Field(min_length=1)
 
 
 class CreateCaseRequestModel(BaseModel):
@@ -31,32 +21,11 @@ class CreateJdVersionRequestModel(BaseModel):
     source: str = Field(min_length=1)
 
 
-class CreateKeywordDraftJobRequestModel(BaseModel):
+class CreateAgentRunRequestModel(BaseModel):
     model_config = STRICT_MODEL_CONFIG
 
-    jdVersionId: str = Field(min_length=1)
-    modelVersion: str = Field(min_length=1)
-    promptVersion: str = Field(min_length=1)
-
-
-class ConfirmConditionPlanRequestModel(BaseModel):
-    model_config = STRICT_MODEL_CONFIG
-
-    mustTerms: list[str]
-    shouldTerms: list[str]
-    excludeTerms: list[str]
-    structuredFilters: StructuredFiltersBoundaryModel
-    evidenceRefs: list[EvidenceRefRequestModel]
-    confirmedBy: str = Field(min_length=1)
-
-
-class CreateSearchRunRequestModel(BaseModel):
-    model_config = STRICT_MODEL_CONFIG
-
-    caseId: str = Field(min_length=1)
-    planId: str = Field(min_length=1)
-    pageBudget: int = Field(ge=1)
-    idempotencyKey: str = Field(min_length=1)
+    jdText: str = Field(min_length=1)
+    sourcingPreferenceText: str = Field(min_length=1)
 
 
 class SaveVerdictRequestModel(BaseModel):

@@ -43,7 +43,6 @@ Rules:
 ## Forbidden Write Paths
 
 - `docs/_generated/**`
-- `apps/web-evals/**`
 - `.github/**`
 - Any path outside the allowed write set
 

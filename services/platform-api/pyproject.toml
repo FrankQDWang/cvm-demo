@@ -6,6 +6,8 @@ dependencies = [
   "cvm-contracts-generated",
   "cvm-domain-kernel",
   "fastapi>=0.135,<0.136",
+  "httpx>=0.28,<0.29",
+  "langfuse>=3.9,<4",
   "protobuf>=6.33,<7",
   "pydantic>=2.12,<3",
   "pydantic-settings>=2.13,<3",

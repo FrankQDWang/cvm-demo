@@ -2,8 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { SearchRunStatusCount } from './SearchRunStatusCount';
+import type { AgentRunStatusCount } from './AgentRunStatusCount';
 export type QueueSummary = {
-    searchRuns: Array<SearchRunStatusCount>;
+    agentRuns: Array<AgentRunStatusCount>;
 };
 

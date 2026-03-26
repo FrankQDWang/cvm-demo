@@ -9,7 +9,7 @@ from temporalio.worker import Worker
 
 from cvm_platform.infrastructure.db import initialize_database
 from cvm_platform.settings.config import settings
-from cvm_worker.workflows import SearchRunWorkflow, execute_search_run
+from cvm_worker.workflows import AgentRunWorkflow, execute_agent_run
 
 
 logger = logging.getLogger("cvm.worker.startup")
@@ -29,8 +29,8 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[SearchRunWorkflow],
-        activities=[execute_search_run],
+        workflows=[AgentRunWorkflow],
+        activities=[execute_agent_run],
         activity_executor=activity_executor,
     )
     await worker.run()

@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import {
   type OpsSummaryResponse,
   PlatformApiService,
-  type TemporalSearchRunDiagnosticResponse,
+  type TemporalAgentRunDiagnosticResponse,
 } from '@cvm/platform-api-client';
 
 @Component({
@@ -47,13 +47,13 @@ import {
         <div class="row">
           <div>
             <h2>Temporal Diagnostics</h2>
-            <p>输入 <code>runId</code>，查看应用状态、execution 状态和 visibility 索引状态。</p>
+            <p>输入 <code>agentRunId</code>，查看应用状态、execution 状态、visibility 索引和 Langfuse trace。</p>
           </div>
         </div>
         <label class="field">
-          <span>Search Run ID</span>
+          <span>Agent Run ID</span>
           <div class="input-row">
-            <input [(ngModel)]="runId" placeholder="run_xxx" />
+            <input [(ngModel)]="runId" placeholder="agent_xxx" />
             <button (click)="inspect()" [disabled]="!runId.trim() || loadingDiagnostic">
               {{ loadingDiagnostic ? '查询中...' : '查询' }}
             </button>
@@ -65,6 +65,18 @@ import {
             <article class="card">
               <span>App Status</span>
               <strong>{{ item.appStatus }}</strong>
+            </article>
+            <article class="card">
+              <span>Current Round</span>
+              <strong>{{ item.currentRound }}</strong>
+            </article>
+            <article class="card">
+              <span>Step Count</span>
+              <strong>{{ item.stepCount }}</strong>
+            </article>
+            <article class="card">
+              <span>Final Shortlist</span>
+              <strong>{{ item.finalShortlistCount }}</strong>
             </article>
             <article class="card">
               <span>Execution Found</span>
@@ -87,6 +99,7 @@ import {
               <strong>{{ item.taskQueue }}</strong>
             </article>
           </div>
+          <p *ngIf="item.stopReason" class="error">Stop: {{ item.stopReason }}</p>
           <p *ngIf="item.error" class="error">{{ item.error }}</p>
           <a
             *ngIf="item.temporalUiUrl"
@@ -96,6 +109,15 @@ import {
             class="link"
           >
             打开 Temporal UI
+          </a>
+          <a
+            *ngIf="item.langfuseTraceUrl"
+            [href]="item.langfuseTraceUrl"
+            target="_blank"
+            rel="noreferrer"
+            class="link"
+          >
+            打开 Langfuse Trace
           </a>
           <pre>{{ item | json }}</pre>
         </ng-container>
@@ -124,7 +146,7 @@ import {
 export class OpsPageComponent implements OnInit {
   summary: OpsSummaryResponse | null = null;
   runId = '';
-  diagnostic: TemporalSearchRunDiagnosticResponse | null = null;
+  diagnostic: TemporalAgentRunDiagnosticResponse | null = null;
   diagnosticError = '';
   loadingDiagnostic = false;
 
@@ -145,7 +167,7 @@ export class OpsPageComponent implements OnInit {
     this.loadingDiagnostic = true;
     this.diagnosticError = '';
     try {
-      this.diagnostic = await this.api.getSearchRunTemporalDiagnostic(this.runId.trim());
+      this.diagnostic = await this.api.getAgentRunTemporalDiagnostic(this.runId.trim());
     } catch (error) {
       this.diagnostic = null;
       this.diagnosticError = error instanceof Error ? error.message : '查询失败';
