@@ -168,7 +168,8 @@ dev-web-evals:
 	@set -a; source .env 2>/dev/null || true; set +a; \
 	docker compose up -d web-evals; \
 	echo "Langfuse UI: http://127.0.0.1:$${CVM_EVALS_WEB_PORT:-4202}"; \
-	echo "Langfuse Login: $${CVM_LANGFUSE_INIT_USER_EMAIL:-admin@local.test} / $${CVM_LANGFUSE_INIT_USER_PASSWORD:-local-admin-pass}"
+	echo "Langfuse Login Email: $${CVM_LANGFUSE_INIT_USER_EMAIL:-<set-in-.env>}"; \
+	echo "Langfuse Password: see CVM_LANGFUSE_INIT_USER_PASSWORD in .env"
 
 # 清理本地导出目录中过期文件
 clean-exports:

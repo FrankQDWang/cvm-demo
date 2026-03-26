@@ -24,7 +24,7 @@ printf '  API:         http://127.0.0.1:%s\n' "$API_PORT"
 printf '  Temporal UI: http://127.0.0.1:%s\n' "$TEMPORAL_UI_PORT"
 printf '  Temporal:    127.0.0.1:%s\n' "$TEMPORAL_PORT"
 printf '  OpenSearch:  http://127.0.0.1:%s\n' "$OPENSEARCH_PORT"
-printf '  Langfuse:    %s / %s\n' "${CVM_LANGFUSE_INIT_USER_EMAIL:-admin@local.test}" "${CVM_LANGFUSE_INIT_USER_PASSWORD:-local-admin-pass}"
+printf '  Langfuse:    %s / %s\n' "${CVM_LANGFUSE_INIT_USER_EMAIL:-<set-in-.env>}" 'password in .env'
 printf '\n'
 printf '常用命令：\n'
 printf '  make up-build\n'

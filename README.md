@@ -11,7 +11,7 @@ make up
 ```
 
 - `User Web` 现在只保留一个最小闭环页面：输入 `JD` 与 `寻访偏好`，一次启动，返回最终 Top 5 shortlist。
-- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET` 和 `OPENAI_API_KEY`；自托管 Langfuse 的本地凭据和初始化参数已经一并给出默认值。
+- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET`、`OPENAI_API_KEY`，以及 Langfuse 相关的本地 secret / password 字段。
 - `API` 和 `worker` 在本地运行时默认按 `CVM_AGENT_PROFILE=live` 调用 OpenAI；如果未提供 `OPENAI_API_KEY`，启动会直接失败。自动化测试与 CI 不依赖本地 `.env`，而是显式切到 deterministic profile。
 - `Agent Run` 现在默认且唯一通过 `Temporal` 执行，不再支持旧的多步检索链。
 - `Temporal` 可见性现在默认走 `OpenSearch-backed advanced visibility`；判断 `Temporal UI` 前，先执行显式重建命令。
@@ -73,7 +73,7 @@ make down
 - User Web: `http://127.0.0.1:4200`
 - Ops Web: `http://127.0.0.1:4201`
 - Langfuse UI: `http://127.0.0.1:4202`
-- Langfuse Login: `admin@local.test / local-admin-pass`
+- Langfuse Login: 见 `.env` 中的 `CVM_LANGFUSE_INIT_USER_EMAIL` 与 `CVM_LANGFUSE_INIT_USER_PASSWORD`
 - API URL: `http://127.0.0.1:8010`
 - Temporal UI: `http://127.0.0.1:8080`
 - OpenSearch: `http://127.0.0.1:9200`
