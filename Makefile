@@ -1,15 +1,53 @@
-SHELL := /bin/zsh
+SHELL := /bin/bash
+.DEFAULT_GOAL := help
 
-# 常用目标说明：
-# - make up: 一键启动本地完整栈（默认不强制 build）
-# - make up-build: 依赖或 Dockerfile 变更后强制重建，并刷新本地 build id
-# - make rebuild-backend: 只重建 api + worker，适合代码或依赖变更后验证
-# - make rebuild-temporal-stack: 重建 temporal + ui + opensearch + admin-tools
-# - make temporal-visibility-smoke: 做一次可见性专项验收
-# - make down: 停止并清理当前 compose 资源
-# - make status: 查看容器状态
-# - make dev-api / dev-worker / dev-web-*: 宿主机开发模式启动
-.PHONY: codegen validate validate-static validate-contracts check-no-legacy-searchrun check-no-legacy-agent-config check-no-embeddeddb test test-stack test-stack-run eval-critical eval-critical-run verify-images install-single-branch-guard dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
+# 人类日常只需要关注 3 个完整栈命令：up-build / up / down。
+# 其余目标仍然保留，因为 CI、执行计划、专项验收脚本和本地开发都在使用。
+.PHONY: help codegen validate validate-static validate-contracts check-no-legacy-searchrun check-no-legacy-agent-config check-no-embeddeddb test test-stack test-stack-run eval-critical eval-critical-run verify-images install-single-branch-guard dev-api dev-worker dev-web dev-web-user dev-web-ops dev-web-evals clean-exports up up-build rebuild-backend rebuild-temporal-stack temporal-visibility-smoke temporal-visibility-smoke-run down status urls
+
+help:
+	@printf '\n'
+	@printf '人类常用完整栈命令：\n'
+	@printf '  make up-build   强制重建并启动完整栈；改了依赖、Dockerfile、后端镜像后优先用这个。\n'
+	@printf '  make up         直接启动完整栈；复用已有镜像，适合日常开工。\n'
+	@printf '  make down       关闭并清理完整栈。\n'
+	@printf '\n'
+	@printf '其它本地辅助命令：\n'
+	@printf '  make status     查看当前容器状态，并打印访问地址。\n'
+	@printf '  make urls       仅打印本地访问地址。\n'
+	@printf '\n'
+	@printf '内部 / CI / 专项目标：\n'
+	@printf '  make validate | test | test-stack | eval-critical | temporal-visibility-smoke | verify-images\n'
+	@printf '  make dev-api | dev-worker | dev-web-user | dev-web-ops | dev-web-evals\n'
+	@printf '\n'
+
+# 只打印本地访问地址，便于确认当前端口与入口
+urls:
+	@./tools/bootstrap/print-endpoints.sh
+
+# 人类常用：强制重建并启动完整本地栈
+# 适用于 Dockerfile、依赖、镜像层或后端构建产物发生变化后的刷新启动
+up-build:
+	@BUILD_ID=$$(date -u +%Y%m%d%H%M%S); \
+	echo "Using CVM_BUILD_ID=$$BUILD_ID"; \
+	CVM_BUILD_ID=$$BUILD_ID docker compose up -d --build --remove-orphans
+	@$(MAKE) --no-print-directory urls
+
+# 人类常用：直接启动完整本地栈
+# 默认复用已有镜像，适合日常启动或继续上次的本地环境
+up:
+	docker compose up -d --remove-orphans
+	@$(MAKE) --no-print-directory urls
+
+# 人类常用：关闭并清理完整本地栈
+# 停掉 compose 服务并移除当前项目创建的孤儿容器
+down:
+	docker compose down --remove-orphans
+
+# 查看 compose 服务状态，并补充打印当前访问地址
+status:
+	docker compose ps
+	@$(MAKE) --no-print-directory urls
 
 # 根据 contract 重新生成 generated 代码
 codegen:
@@ -136,23 +174,6 @@ dev-web-evals:
 clean-exports:
 	uv run python tools/bootstrap/cleanup_exports.py
 
-# 打印本地访问地址，便于直接复制
-urls:
-	@./tools/bootstrap/print-endpoints.sh
-
-# 一键启动完整本地栈：postgres + temporal + api + worker + web-user + web-ops + self-hosted langfuse
-# 默认复用已有镜像，避免每次都重新 build
-up:
-	docker compose up -d --remove-orphans
-	@$(MAKE) --no-print-directory urls
-
-# 依赖、Dockerfile 或构建产物有变化时，手动强制重建
-up-build:
-	@BUILD_ID=$$(date -u +%Y%m%d%H%M%S); \
-	echo "Using CVM_BUILD_ID=$$BUILD_ID"; \
-	CVM_BUILD_ID=$$BUILD_ID docker compose up -d --build --remove-orphans
-	@$(MAKE) --no-print-directory urls
-
 # 显式重建后端服务，避免旧镜像导致 Temporal 观察失真
 rebuild-backend:
 	@BUILD_ID=$$(date -u +%Y%m%d%H%M%S); \
@@ -176,12 +197,3 @@ temporal-visibility-smoke:
 temporal-visibility-smoke-run:
 	uv run python tools/ci/check_local_stack_ready.py
 	uv run python tools/smoke/temporal_visibility_smoke.py
-
-# 停止完整本地栈
-down:
-	docker compose down --remove-orphans
-
-# 查看 compose 服务状态
-status:
-	docker compose ps
-	@$(MAKE) --no-print-directory urls
