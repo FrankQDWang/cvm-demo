@@ -85,6 +85,21 @@ runs:
       if: ${{ inputs.sync-python-workspace == 'true' }}
       shell: bash
       run: uv sync --locked
+    - name: Generate CI compose password
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "${CVM_POSTGRES_PASSWORD:-}" ]; then
+          exit 0
+        fi
+        python - <<'PY'
+        import os
+        import secrets
+
+        password = f"ci-pg-{secrets.token_hex(8)}"
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+            env_file.write(f"CVM_POSTGRES_PASSWORD={password}\n")
+        PY
     - name: Install Node dependencies
       if: ${{ inputs.install-node-dependencies == 'true' }}
       shell: bash

@@ -11,7 +11,7 @@ make up
 ```
 
 - `User Web` 现在只保留一个最小闭环页面：输入 `JD` 与 `寻访偏好`，一次启动，返回最终 Top 5 shortlist。
-- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET`、`OPENAI_API_KEY`，以及 Langfuse 相关的本地 secret / password 字段。
+- `.env` / `.env.example` 只表达真实运行时集成：默认搜索源是 `CTS`，复制 `.env.example` 后需要填入 `CVM_CTS_TENANT_KEY`、`CVM_CTS_TENANT_SECRET`、`OPENAI_API_KEY`，以及 Langfuse 和本地 Postgres 相关的 password / secret 字段。
 - `API` 和 `worker` 在本地运行时默认按 `CVM_AGENT_PROFILE=live` 调用 OpenAI；如果未提供 `OPENAI_API_KEY`，启动会直接失败。自动化测试与 CI 不依赖本地 `.env`，而是显式切到 deterministic profile。
 - `Agent Run` 现在默认且唯一通过 `Temporal` 执行，不再支持旧的多步检索链。
 - `Temporal` 可见性现在默认走 `OpenSearch-backed advanced visibility`；判断 `Temporal UI` 前，先执行显式重建命令。

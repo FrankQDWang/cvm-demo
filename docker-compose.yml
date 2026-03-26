@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${CVM_POSTGRES_USER:-cvm}
-      POSTGRES_PASSWORD: ${CVM_POSTGRES_PASSWORD:-cvm}
+      POSTGRES_PASSWORD: ${CVM_POSTGRES_PASSWORD:-}
       POSTGRES_DB: ${CVM_POSTGRES_DB:-cvm}
     ports:
       - "${CVM_POSTGRES_PORT:-5432}:5432"
@@ -44,7 +44,7 @@ services:
       DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: ${CVM_POSTGRES_USER:-cvm}
-      POSTGRES_PWD: ${CVM_POSTGRES_PASSWORD:-cvm}
+      POSTGRES_PWD: ${CVM_POSTGRES_PASSWORD:-}
       POSTGRES_SEEDS: postgres
       POSTGRES_DB: ${CVM_POSTGRES_DB:-cvm}
       ENABLE_ES: "true"
@@ -212,7 +212,7 @@ services:
       opensearch:
         condition: service_healthy
     environment:
-      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
+      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
       CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
       CVM_TEMPORAL_HOST: temporal:7233
       CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-agent-runs}
@@ -280,7 +280,7 @@ services:
       opensearch:
         condition: service_healthy
     environment:
-      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
+      CVM_DATABASE_URL: postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-}@postgres:5432/${CVM_POSTGRES_DB:-cvm}
       CVM_BUILD_ID: ${CVM_BUILD_ID:-local-dev}
       CVM_TEMPORAL_HOST: temporal:7233
       CVM_TEMPORAL_TASK_QUEUE: ${CVM_TEMPORAL_TASK_QUEUE:-cvm-agent-runs}

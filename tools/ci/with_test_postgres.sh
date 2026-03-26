@@ -11,8 +11,13 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
 export COMPOSE_PROJECT_NAME="${CVM_TEST_COMPOSE_PROJECT_NAME:-${COMPOSE_PROJECT_NAME:-cvm-test-db}}"
+export CVM_POSTGRES_PASSWORD="${CVM_POSTGRES_PASSWORD:-ci-pg-$(python - <<'PY'
+import secrets
+print(secrets.token_hex(8))
+PY
+)}"
 export CVM_POSTGRES_PORT="${CVM_TEST_POSTGRES_PORT:-15432}"
-export CVM_DATABASE_URL="postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD:-cvm}@127.0.0.1:${CVM_POSTGRES_PORT}/${CVM_POSTGRES_DB:-cvm}"
+export CVM_DATABASE_URL="postgresql+psycopg://${CVM_POSTGRES_USER:-cvm}:${CVM_POSTGRES_PASSWORD}@127.0.0.1:${CVM_POSTGRES_PORT}/${CVM_POSTGRES_DB:-cvm}"
 
 cleanup() {
   docker compose down --remove-orphans >/dev/null 2>&1 || true
