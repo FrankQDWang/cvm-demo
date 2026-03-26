@@ -22,6 +22,8 @@ def initialize_database() -> None:
         connection.execute(text("SELECT pg_advisory_lock(871245019533682001)"))
         try:
             Base.metadata.create_all(bind=connection)
+            connection.execute(text("ALTER TABLE agent_run ADD COLUMN IF NOT EXISTS agent_runtime_config JSON"))
+            connection.execute(text("ALTER TABLE agent_run ADD COLUMN IF NOT EXISTS case_id VARCHAR(64)"))
         finally:
             connection.execute(text("SELECT pg_advisory_unlock(871245019533682001)"))
 

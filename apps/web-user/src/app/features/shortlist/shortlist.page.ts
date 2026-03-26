@@ -5,15 +5,26 @@ import { FormsModule } from '@angular/forms';
 import {
   type AgentRunResponse,
   type AgentShortlistCandidate,
+  type CandidateDetailResponse,
   PlatformApiService,
 } from '@cvm/platform-api-client';
 
 const POLL_INTERVAL_MS = 2_500;
 
+type DetailLoadStatus = 'idle' | 'loading' | 'loaded' | 'error';
+
 type ShortlistRow = {
   rank: number;
   candidate: AgentShortlistCandidate;
 };
+
+type DetailCacheEntry = {
+  status: DetailLoadStatus;
+  detail: CandidateDetailResponse | null;
+  error: string;
+};
+
+type ResumeProjection = CandidateDetailResponse['resumeView']['projection'];
 
 @Component({
   selector: 'app-shortlist-page',
@@ -39,6 +50,8 @@ export class ShortlistPageComponent implements OnDestroy {
   isPolling = false;
 
   shortlist: ShortlistRow[] = [];
+  expandedCandidateId: string | null = null;
+  private detailCache: Record<string, DetailCacheEntry> = {};
 
   ngOnDestroy(): void {
     this.stopPolling();
@@ -85,7 +98,87 @@ export class ShortlistPageComponent implements OnDestroy {
   }
 
   trackShortlist(_: number, row: ShortlistRow): string {
-    return row.candidate.externalIdentityId;
+    return row.candidate.candidateId;
+  }
+
+  isResumeExpanded(row: ShortlistRow): boolean {
+    return this.expandedCandidateId === row.candidate.candidateId;
+  }
+
+  resumeToggleLabel(row: ShortlistRow): string {
+    return this.isResumeExpanded(row) ? '收起简历' : '查看完整简历';
+  }
+
+  resumeToggleIcon(row: ShortlistRow): string {
+    return this.isResumeExpanded(row) ? '-' : '+';
+  }
+
+  resumeDetailState(row: ShortlistRow): DetailCacheEntry {
+    return this.detailCache[row.candidate.candidateId] ?? EMPTY_DETAIL_CACHE_ENTRY;
+  }
+
+  resumeProjection(row: ShortlistRow): ResumeProjection | null {
+    return this.resumeDetailState(row).detail?.resumeView.projection ?? null;
+  }
+
+  async toggleResume(row: ShortlistRow): Promise<void> {
+    const candidateId = row.candidate.candidateId;
+    if (this.expandedCandidateId === candidateId) {
+      this.expandedCandidateId = null;
+      return;
+    }
+    this.expandedCandidateId = candidateId;
+    await this.ensureCandidateDetail(row.candidate);
+  }
+
+  async retryResume(row: ShortlistRow, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    await this.loadCandidateDetail(row.candidate, { force: true });
+  }
+
+  fallbackText(value: string | number | null | undefined): string {
+    if (value === null || value === undefined) {
+      return '未提供';
+    }
+    const normalized = String(value).trim();
+    return normalized.length > 0 ? normalized : '未提供';
+  }
+
+  workExperience(row: ShortlistRow) {
+    return this.resumeProjection(row)?.workExperience ?? [];
+  }
+
+  educationItems(row: ShortlistRow) {
+    return this.resumeProjection(row)?.education ?? [];
+  }
+
+  workSummaries(row: ShortlistRow): string[] {
+    return this.resumeProjection(row)?.workSummaries ?? [];
+  }
+
+  projectNames(row: ShortlistRow): string[] {
+    return this.resumeProjection(row)?.projectNames ?? [];
+  }
+
+  resumeOverview(row: ShortlistRow): Array<{ label: string; value: string }> {
+    const projection = this.resumeProjection(row);
+    return [
+      { label: '工作年限', value: this.fallbackText(projection?.workYear) },
+      { label: '当前地点', value: this.fallbackText(projection?.currentLocation) },
+      { label: '期望地点', value: this.fallbackText(projection?.expectedLocation) },
+      { label: '求职状态', value: this.fallbackText(projection?.jobState) },
+      { label: '期望薪资', value: this.fallbackText(projection?.expectedSalary) },
+      { label: '年龄', value: this.fallbackText(projection?.age) },
+    ];
+  }
+
+  workExperienceMeta(startTime: string | null, endTime: string | null, duration: string | null): string {
+    if (duration?.trim()) {
+      return duration;
+    }
+    const start = startTime?.trim() || '未提供';
+    const end = endTime?.trim() || '至今';
+    return `${start} - ${end}`;
   }
 
   private async refreshRun(): Promise<void> {
@@ -164,6 +257,8 @@ export class ShortlistPageComponent implements OnDestroy {
     this.traceUrl = '';
     this.isPolling = false;
     this.shortlist = [];
+    this.expandedCandidateId = null;
+    this.detailCache = {};
   }
 
   private handleRunError(error: unknown): void {
@@ -172,7 +267,53 @@ export class ShortlistPageComponent implements OnDestroy {
     this.statusLine = '';
     this.errorMessage = describeError(error);
   }
+
+  private async ensureCandidateDetail(candidate: AgentShortlistCandidate): Promise<void> {
+    const cached = this.detailCache[candidate.candidateId];
+    if (cached?.status === 'loaded' || cached?.status === 'loading') {
+      return;
+    }
+    await this.loadCandidateDetail(candidate);
+  }
+
+  private async loadCandidateDetail(
+    candidate: AgentShortlistCandidate,
+    options?: { force?: boolean },
+  ): Promise<void> {
+    const candidateId = candidate.candidateId;
+    if (!options?.force) {
+      const cached = this.detailCache[candidateId];
+      if (cached?.status === 'loaded' || cached?.status === 'loading') {
+        return;
+      }
+    }
+    this.detailCache[candidateId] = {
+      status: 'loading',
+      detail: null,
+      error: '',
+    };
+    try {
+      const detail = await this.api.getCaseCandidate(candidateId);
+      this.detailCache[candidateId] = {
+        status: 'loaded',
+        detail,
+        error: '',
+      };
+    } catch (error: unknown) {
+      this.detailCache[candidateId] = {
+        status: 'error',
+        detail: null,
+        error: describeError(error),
+      };
+    }
+  }
 }
+
+const EMPTY_DETAIL_CACHE_ENTRY: DetailCacheEntry = {
+  status: 'idle',
+  detail: null,
+  error: '',
+};
 
 function normalizeStatus(status: string): string {
   return status.trim().toLowerCase();

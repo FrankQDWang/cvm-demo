@@ -9,6 +9,7 @@ JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject = dict[str, JsonValue]
 AgentRunStatus = Literal["queued", "running", "completed", "failed"]
 PageFetchStatus = Literal["completed", "failed"]
+AgentThinkingEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 
 
 class EvidenceRefPayload(TypedDict):
@@ -139,6 +140,17 @@ class AgentRunConfigPayload(TypedDict):
     finalTopK: int
 
 
+class AgentRuntimeConfigEntryPayload(TypedDict):
+    modelVersion: str
+    thinkingEffort: AgentThinkingEffort | None
+
+
+class AgentRuntimeConfigPayload(TypedDict):
+    strategyExtractor: AgentRuntimeConfigEntryPayload
+    resumeMatcher: AgentRuntimeConfigEntryPayload
+    searchReflector: AgentRuntimeConfigEntryPayload
+
+
 class AgentSearchStrategyPayload(TypedDict):
     mustRequirements: list[str]
     coreRequirements: list[str]
@@ -160,6 +172,7 @@ class AgentRunStepPayload(TypedDict):
 
 
 class AgentShortlistCandidatePayload(TypedDict):
+    candidateId: str
     externalIdentityId: str
     name: str
     title: str

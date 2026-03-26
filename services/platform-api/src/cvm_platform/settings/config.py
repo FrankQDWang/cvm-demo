@@ -2,8 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from cvm_platform.domain.types import AgentThinkingEffort
+
+
+AGENT_THINKING_FIELDS = (
+    "agent_thinking",
+    "agent_thinking_strategy_extractor",
+    "agent_thinking_resume_matcher",
+    "agent_thinking_search_reflector",
+)
+AGENT_MODEL_OVERRIDE_FIELDS = (
+    "agent_model_strategy_extractor",
+    "agent_model_resume_matcher",
+    "agent_model_search_reflector",
+)
 
 
 class Settings(BaseSettings):
@@ -20,6 +35,13 @@ class Settings(BaseSettings):
     temporal_ui_base_url: str = "http://127.0.0.1:8080"
     agent_profile: str = "live"
     agent_model: str = "gpt-5.4-mini"
+    agent_model_strategy_extractor: str | None = None
+    agent_model_resume_matcher: str | None = None
+    agent_model_search_reflector: str | None = None
+    agent_thinking: AgentThinkingEffort | None = None
+    agent_thinking_strategy_extractor: AgentThinkingEffort | None = None
+    agent_thinking_resume_matcher: AgentThinkingEffort | None = None
+    agent_thinking_search_reflector: AgentThinkingEffort | None = None
     agent_model_timeout_seconds: int = 30
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
     openai_base_url: str = Field(default="", validation_alias="OPENAI_BASE_URL")
@@ -41,6 +63,22 @@ class Settings(BaseSettings):
     agent_round_fetch_schedule: str = "10,5,5"
     agent_final_top_k: int = 5
     agent_prompt_version: str = "agent-loop-v1"
+
+    @field_validator(*AGENT_MODEL_OVERRIDE_FIELDS, mode="before")
+    @classmethod
+    def normalize_agent_model_override(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator(*AGENT_THINKING_FIELDS, mode="before")
+    @classmethod
+    def normalize_agent_thinking(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_agent_runtime(self) -> "Settings":

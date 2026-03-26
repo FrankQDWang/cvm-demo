@@ -17,7 +17,12 @@ from temporalio.common import RetryPolicy
 from temporalio.workflow import ActivityConfig
 
 from cvm_platform.application.agent_runs import build_compact_round_ledger
-from cvm_platform.domain.types import CandidateData, NormalizedQueryPayload, StructuredFiltersPayload
+from cvm_platform.domain.types import (
+    AgentThinkingEffort,
+    CandidateData,
+    NormalizedQueryPayload,
+    StructuredFiltersPayload,
+)
 from cvm_platform.settings.config import Settings
 from cvm_worker.models import (
     AgentRunStepModel,
@@ -71,6 +76,14 @@ class AgentBundle:
             self.resume_matcher,
             self.search_reflector,
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedAgentInvocation:
+    model: str | None
+    model_version: str
+    thinking_effort: AgentThinkingEffort | None
+    model_settings: dict[str, object] | None
 
 
 def build_strategy_prompt(
@@ -167,10 +180,33 @@ def build_search_reflection_prompt(
     )
 
 
-def resolve_run_model(settings: Settings, model_version: str) -> str | None:
+def resolve_agent_invocation(
+    settings: Settings,
+    *,
+    model_version: str,
+    thinking_effort: AgentThinkingEffort | None,
+) -> ResolvedAgentInvocation:
     if settings.agent_profile.lower() != "live":
-        return None
-    return f"openai:{model_version}"
+        return ResolvedAgentInvocation(
+            model=None,
+            model_version="deterministic",
+            thinking_effort=None,
+            model_settings=None,
+        )
+    provider_prefix = "openai-responses" if thinking_effort not in (None, "none") else "openai"
+    resolved_model = f"{provider_prefix}:{model_version}"
+    if thinking_effort == "none":
+        model_settings: dict[str, object] | None = {"thinking": False}
+    elif thinking_effort is None:
+        model_settings = None
+    else:
+        model_settings = {"thinking": thinking_effort}
+    return ResolvedAgentInvocation(
+        model=resolved_model,
+        model_version=resolved_model,
+        thinking_effort=thinking_effort,
+        model_settings=model_settings,
+    )
 
 
 def build_temporal_agents(settings: Settings) -> AgentBundle:
@@ -265,7 +301,7 @@ def _provider_factory(
     provider_name: str,
 ) -> OpenAIProvider:
     del run_context
-    if provider_name != "openai":
+    if provider_name not in {"openai", "openai-responses"}:
         raise UserError(f"Unsupported provider for CVM agent workflow: {provider_name}")
     if not settings.openai_api_key:
         raise UserError("OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live.")

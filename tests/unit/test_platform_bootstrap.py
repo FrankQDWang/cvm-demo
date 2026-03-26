@@ -73,6 +73,7 @@ def test_initialize_database_applies_schema_updates(monkeypatch) -> None:
     db.initialize_database()
 
     assert "create_all:FakeConnection" in executed
+    assert any("agent_runtime_config" in statement for statement in executed)
     assert any("pg_advisory_lock" in statement for statement in executed)
     assert any("pg_advisory_unlock" in statement for statement in executed)
 
@@ -105,13 +106,95 @@ def test_build_platform_service_wires_runtime_and_uow(monkeypatch) -> None:
     assert service.uow.session is session
 
 
-def test_settings_default_agent_runtime_is_live() -> None:
+def test_settings_default_agent_runtime_is_live(monkeypatch) -> None:
+    monkeypatch.delenv("CVM_AGENT_PROFILE", raising=False)
+    monkeypatch.delenv("CVM_AGENT_MIN_ROUNDS", raising=False)
+    monkeypatch.delenv("CVM_AGENT_MAX_ROUNDS", raising=False)
+    monkeypatch.delenv("CVM_AGENT_ROUND_FETCH_SCHEDULE", raising=False)
+    monkeypatch.delenv("CVM_AGENT_THINKING", raising=False)
+    monkeypatch.delenv("CVM_AGENT_MODEL_STRATEGY_EXTRACTOR", raising=False)
+    monkeypatch.delenv("CVM_AGENT_MODEL_RESUME_MATCHER", raising=False)
+    monkeypatch.delenv("CVM_AGENT_MODEL_SEARCH_REFLECTOR", raising=False)
+    monkeypatch.delenv("CVM_AGENT_THINKING_STRATEGY_EXTRACTOR", raising=False)
+    monkeypatch.delenv("CVM_AGENT_THINKING_RESUME_MATCHER", raising=False)
+    monkeypatch.delenv("CVM_AGENT_THINKING_SEARCH_REFLECTOR", raising=False)
+
     settings = Settings(_env_file=None)
 
     assert settings.agent_profile == "live"
     assert settings.agent_min_rounds == 3
     assert settings.agent_max_rounds == 5
     assert settings.agent_round_fetch_schedule == "10,5,5"
+    assert settings.agent_thinking is None
+    assert settings.agent_model_search_reflector is None
+
+
+def test_settings_accept_agent_thinking_and_role_overrides() -> None:
+    settings = Settings(
+        _env_file=None,
+        agent_profile="deterministic",
+        agent_thinking="LOW",
+        agent_model_search_reflector=" gpt-5.4 ",
+        agent_thinking_search_reflector="MEDIUM",
+    )
+    runtime_config = service_factory.build_runtime_config(settings)
+
+    assert settings.agent_thinking == "low"
+    assert settings.agent_model_search_reflector == "gpt-5.4"
+    assert settings.agent_thinking_search_reflector == "medium"
+    assert runtime_config.default_agent_thinking == "low"
+    assert runtime_config.agent_model_overrides["searchReflector"] == "gpt-5.4"
+    assert runtime_config.agent_thinking_overrides["searchReflector"] == "medium"
+
+
+def test_build_runtime_config_captures_all_role_specific_overrides() -> None:
+    settings = Settings(
+        _env_file=None,
+        agent_profile="deterministic",
+        agent_thinking="low",
+        agent_model_strategy_extractor="gpt-5.4",
+        agent_model_resume_matcher="gpt-5.4-mini",
+        agent_model_search_reflector="gpt-5.4-nano",
+        agent_thinking_strategy_extractor="medium",
+        agent_thinking_resume_matcher="high",
+        agent_thinking_search_reflector="xhigh",
+        agent_round_fetch_schedule="10,5,3",
+    )
+
+    runtime_config = service_factory.build_runtime_config(settings)
+
+    assert runtime_config.default_agent_round_fetch_schedule == [10, 5, 3]
+    assert runtime_config.agent_model_overrides == {
+        "strategyExtractor": "gpt-5.4",
+        "resumeMatcher": "gpt-5.4-mini",
+        "searchReflector": "gpt-5.4-nano",
+    }
+    assert runtime_config.agent_thinking_overrides == {
+        "strategyExtractor": "medium",
+        "resumeMatcher": "high",
+        "searchReflector": "xhigh",
+    }
+
+
+def test_build_runtime_config_rejects_non_positive_round_fetch_schedule() -> None:
+    with pytest.raises(ValueError, match="CVM_AGENT_ROUND_FETCH_SCHEDULE"):
+        service_factory.build_runtime_config(
+            Settings(
+                _env_file=None,
+                agent_profile="deterministic",
+                agent_round_fetch_schedule="10,0,5",
+            )
+        )
+
+
+def test_settings_reject_invalid_agent_thinking() -> None:
+    with pytest.raises(ValueError, match="agent_thinking"):
+        Settings(_env_file=None, agent_thinking="turbo")
+
+
+def test_settings_reject_invalid_agent_profile() -> None:
+    with pytest.raises(ValueError, match="CVM_AGENT_PROFILE"):
+        Settings(_env_file=None, agent_profile="batch")
 
 
 def test_settings_reject_invalid_agent_round_window() -> None:
@@ -179,7 +262,7 @@ def test_inspect_agent_run_reports_execution_and_visibility(monkeypatch) -> None
         status="completed",
         current_round=2,
         steps=[{"stepType": "stop", "summary": "Stopped because maxRounds was reached."}],
-        final_shortlist=[{"externalIdentityId": "resume_1"}],
+        final_shortlist=[{"candidateId": "cand_1", "externalIdentityId": "resume_1"}],
         error_code=None,
         error_message=None,
         langfuse_trace_url="http://127.0.0.1:4202/project/project-cvm-local/traces/abc",

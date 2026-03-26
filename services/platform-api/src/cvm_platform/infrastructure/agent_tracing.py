@@ -14,7 +14,7 @@ from cvm_platform.application.agent_tracing import (
     NoOpAgentRunTracer,
     TraceObservationType,
 )
-from cvm_platform.domain.types import JsonValue
+from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
 from cvm_platform.settings.config import Settings
 
 try:
@@ -203,6 +203,7 @@ class LangfuseAgentRunTracer:
         sourcing_preference_text: str,
         model_version: str,
         prompt_version: str,
+        agent_runtime_config: AgentRuntimeConfigPayload,
     ) -> Iterator[AgentRunTraceHandle]:
         trace_id = self._client.create_trace_id(seed=run_id)
         root_input: JsonValue = {
@@ -213,6 +214,7 @@ class LangfuseAgentRunTracer:
         root_metadata: JsonValue = {
             "modelVersion": model_version,
             "promptVersion": prompt_version,
+            "agentRuntimeConfig": agent_runtime_config,
         }
         with self._client.start_as_current_observation(
             name="agent-run",

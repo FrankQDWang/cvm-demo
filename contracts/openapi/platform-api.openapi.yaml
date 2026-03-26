@@ -35,6 +35,7 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
       requestBody:
         required: true
         content:
@@ -95,6 +96,7 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
       responses:
         "200":
           description: Agent run status and result
@@ -114,6 +116,7 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
       responses:
         "200":
           description: Candidate detail
@@ -133,6 +136,7 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
       requestBody:
         required: true
         content:
@@ -196,6 +200,7 @@ paths:
           required: true
           schema:
             type: string
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$'
       responses:
         "200":
           description: Temporal agent run diagnostic
@@ -236,9 +241,11 @@ components:
         title:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         ownerTeamId:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
     CreateCaseResponse:
       type: object
       required: [caseId, status]
@@ -255,9 +262,11 @@ components:
         rawText:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         source:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
     CreateJdVersionResponse:
       type: object
       required: [jdVersionId, versionNo, status]
@@ -285,6 +294,29 @@ components:
         finalTopK:
           type: integer
           minimum: 1
+    AgentRuntimeConfigEntry:
+      type: object
+      additionalProperties: false
+      required: [modelVersion, thinkingEffort]
+      properties:
+        modelVersion:
+          type: string
+        thinkingEffort:
+          type:
+            - string
+            - "null"
+          enum: [none, minimal, low, medium, high, xhigh, null]
+    AgentRuntimeConfig:
+      type: object
+      additionalProperties: false
+      required: [strategyExtractor, resumeMatcher, searchReflector]
+      properties:
+        strategyExtractor:
+          $ref: "#/components/schemas/AgentRuntimeConfigEntry"
+        resumeMatcher:
+          $ref: "#/components/schemas/AgentRuntimeConfigEntry"
+        searchReflector:
+          $ref: "#/components/schemas/AgentRuntimeConfigEntry"
     CreateAgentRunRequest:
       type: object
       additionalProperties: false
@@ -293,9 +325,11 @@ components:
         jdText:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         sourcingPreferenceText:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
     CreateAgentRunResponse:
       type: object
       additionalProperties: false
@@ -337,6 +371,7 @@ components:
       additionalProperties: false
       required:
         [
+          candidateId,
           externalIdentityId,
           name,
           title,
@@ -348,6 +383,8 @@ components:
           sourceRound,
         ]
       properties:
+        candidateId:
+          type: string
         externalIdentityId:
           type: string
         name:
@@ -414,12 +451,14 @@ components:
       required:
         [
           runId,
+          caseId,
           status,
           jdText,
           sourcingPreferenceText,
           config,
           currentRound,
           modelVersion,
+          agentRuntimeConfig,
           promptVersion,
           workflowId,
           temporalNamespace,
@@ -432,6 +471,8 @@ components:
         ]
       properties:
         runId:
+          type: string
+        caseId:
           type: string
         status:
           type: string
@@ -446,6 +487,8 @@ components:
           minimum: 0
         modelVersion:
           type: string
+        agentRuntimeConfig:
+          $ref: "#/components/schemas/AgentRuntimeConfig"
         promptVersion:
           type: string
         workflowId:
@@ -696,13 +739,16 @@ components:
             type: string
         notes:
           type: string
+          pattern: '^[^\x00]*$'
         actorId:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         resumeSnapshotId:
           type:
             - string
             - "null"
+          pattern: '^[^\x00]*$'
     SaveVerdictResponse:
       type: object
       additionalProperties: false
@@ -723,15 +769,18 @@ components:
         caseId:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         maskPolicy:
           type: string
           enum: [masked, sensitive]
         reason:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         idempotencyKey:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
     CreateExportResponse:
       type: object
       additionalProperties: false
@@ -930,12 +979,15 @@ components:
         suiteId:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         datasetId:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
         targetVersion:
           type: string
           minLength: 1
+          pattern: '^[^\x00]*$'
     CreateEvalRunResponse:
       type: object
       additionalProperties: false

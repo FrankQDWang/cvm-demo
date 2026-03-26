@@ -8,11 +8,13 @@ export const $CreateCaseRequest = {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
         ownerTeamId: {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
     },
 } as const;

@@ -4,6 +4,10 @@
 /* eslint-disable */
 export const $AgentShortlistCandidate = {
     properties: {
+        candidateId: {
+            type: 'string',
+            isRequired: true,
+        },
         externalIdentityId: {
             type: 'string',
             isRequired: true,

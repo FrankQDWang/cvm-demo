@@ -30,6 +30,7 @@ from cvm_platform.api.request_models import (
     SaveVerdictRequestModel,
 )
 from cvm_platform.application.dto import AgentRunRecord, CandidateDetailRecord, OpsSummaryRecord
+from cvm_platform.application.agent_runs import effective_agent_runtime_config
 from cvm_platform.application.service import PlatformService
 from cvm_platform.domain.errors import TransientDependencyError
 from cvm_platform.infrastructure.temporal_diagnostics import inspect_agent_run
@@ -162,12 +163,17 @@ def _agent_run_response(run: AgentRunRecord) -> AgentRunResponse:
     return AgentRunResponse.model_validate(
         {
             "runId": run.id,
+            "caseId": run.case_id,
             "status": run.status,
             "jdText": run.jd_text,
             "sourcingPreferenceText": run.sourcing_preference_text,
             "config": run.config,
             "currentRound": run.current_round,
             "modelVersion": run.model_version,
+            "agentRuntimeConfig": effective_agent_runtime_config(
+                run.agent_runtime_config,
+                fallback_model_version=run.model_version,
+            ),
             "promptVersion": run.prompt_version,
             "workflowId": run.workflow_id,
             "temporalNamespace": run.temporal_namespace,

@@ -29,22 +29,32 @@ from cvm_worker.activities import (
     load_agent_run_snapshot_impl,
     persist_agent_run_patch,
     persist_agent_run_patch_impl,
+    persist_candidate_snapshots,
+    persist_candidate_snapshots_impl,
+    persist_resume_analyses,
+    persist_resume_analyses_impl,
     publish_langfuse_trace,
     publish_langfuse_trace_impl,
 )
 from cvm_worker.agents import (
     AgentBundle,
+    ResolvedAgentInvocation,
     build_resume_match_prompt,
     build_search_reflection_prompt,
     build_strategy_prompt,
     build_temporal_agents,
-    resolve_run_model,
+    resolve_agent_invocation,
 )
 from cvm_worker.models import (
     AgentRunSnapshotModel,
     AgentRunStepModel,
     CtsSearchRequestModel,
     NormalizedStrategyModel,
+    PersistCandidateSnapshotsRequestModel,
+    PersistCandidateSnapshotsResultModel,
+    PersistResumeAnalysesRequestModel,
+    PersistResumeAnalysisItemModel,
+    PersistedCandidateRefModel,
     ResumeMatcherOutputModel,
     RunPersistencePatchModel,
     SearchReflectorOutputModel,
@@ -67,11 +77,19 @@ class _ExecutionIO(Protocol):
 
     async def search_candidates(self, request: CtsSearchRequestModel) -> WorkerSearchPageModel: ...
 
+    async def persist_candidate_snapshots(
+        self,
+        request: PersistCandidateSnapshotsRequestModel,
+    ) -> PersistCandidateSnapshotsResultModel: ...
+
+    async def persist_resume_analyses(self, request: PersistResumeAnalysesRequestModel) -> int: ...
+
     async def publish_trace(self, run_id: str) -> TracePublicationModel: ...
 
 
 @dataclass(slots=True)
 class _ShortlistedCandidate:
+    candidate_id: str
     candidate: WorkerCandidateModel
     score: float
     reason: str
@@ -79,6 +97,7 @@ class _ShortlistedCandidate:
 
     def to_model(self) -> ShortlistCandidateModel:
         return ShortlistCandidateModel(
+            candidateId=self.candidate_id,
             externalIdentityId=self.candidate.externalIdentityId,
             name=self.candidate.name,
             title=self.candidate.title,
@@ -94,9 +113,11 @@ class _ShortlistedCandidate:
 @dataclass(slots=True)
 class _AnalyzedCandidate:
     shortlisted: _ShortlistedCandidate
+    resume_snapshot_id: str
     prompt_text: str
     model_version: str
     prompt_version: str
+    thinking_effort: str | None
     evidence: list[str]
     concerns: list[str]
 
@@ -105,6 +126,7 @@ class _AnalyzedCandidate:
 class _ExecutionState:
     run: AgentRunSnapshotModel
     retained_candidates: list[_ShortlistedCandidate] = field(default_factory=list)
+    persisted_candidates: dict[str, PersistedCandidateRefModel] = field(default_factory=dict)
     strategy_offsets: dict[str, int] = field(default_factory=dict)
     no_progress_rounds: int = 0
     previous_shortlist_signature: tuple[str, ...] = ()
@@ -164,6 +186,23 @@ class _WorkflowExecutionIO:
             start_to_close_timeout=timedelta(seconds=45),
         )
 
+    async def persist_candidate_snapshots(
+        self,
+        request: PersistCandidateSnapshotsRequestModel,
+    ) -> PersistCandidateSnapshotsResultModel:
+        return await workflow.execute_activity(
+            persist_candidate_snapshots,
+            request,
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+
+    async def persist_resume_analyses(self, request: PersistResumeAnalysesRequestModel) -> int:
+        return await workflow.execute_activity(
+            persist_resume_analyses,
+            request,
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+
     async def publish_trace(self, run_id: str) -> TracePublicationModel:
         return await workflow.execute_activity(
             publish_langfuse_trace,
@@ -201,6 +240,21 @@ class _LocalExecutionIO:
             request,
             self._runtime_settings,
             resume_source_factory=self._resume_source_factory,
+        )
+
+    async def persist_candidate_snapshots(
+        self,
+        request: PersistCandidateSnapshotsRequestModel,
+    ) -> PersistCandidateSnapshotsResultModel:
+        return persist_candidate_snapshots_impl(
+            request,
+            session_factory=self._session_factory,
+        )
+
+    async def persist_resume_analyses(self, request: PersistResumeAnalysesRequestModel) -> int:
+        return persist_resume_analyses_impl(
+            request,
+            session_factory=self._session_factory,
         )
 
     async def publish_trace(self, run_id: str) -> TracePublicationModel:
@@ -258,7 +312,21 @@ async def _execute_agent_run(
         )
     )
 
-    model_override = resolve_run_model(runtime_settings, state.run.modelVersion)
+    strategy_invocation = resolve_agent_invocation(
+        runtime_settings,
+        model_version=state.run.agentRuntimeConfig.strategyExtractor.modelVersion,
+        thinking_effort=state.run.agentRuntimeConfig.strategyExtractor.thinkingEffort,
+    )
+    resume_invocation = resolve_agent_invocation(
+        runtime_settings,
+        model_version=state.run.agentRuntimeConfig.resumeMatcher.modelVersion,
+        thinking_effort=state.run.agentRuntimeConfig.resumeMatcher.thinkingEffort,
+    )
+    reflection_invocation = resolve_agent_invocation(
+        runtime_settings,
+        model_version=state.run.agentRuntimeConfig.searchReflector.modelVersion,
+        thinking_effort=state.run.agentRuntimeConfig.searchReflector.thinkingEffort,
+    )
     try:
         strategy_prompt = build_strategy_prompt(
             jd_text=state.run.jdText,
@@ -267,7 +335,8 @@ async def _execute_agent_run(
         )
         strategy_result = await agents.strategy_extractor.run(
             strategy_prompt,
-            model=model_override,
+            model=strategy_invocation.model,
+            model_settings=strategy_invocation.model_settings,
             output_type=StrategyExtractorOutputModel,
         )
         strategy = strategy_result.output.to_normalized_strategy(state.run.jdText)
@@ -285,7 +354,8 @@ async def _execute_agent_run(
                 "excludeSignals": strategy_result.output.excludeSignals,
                 "round1Query": strategy_result.output.round1Query.model_dump(mode="json"),
                 "promptText": strategy_prompt,
-                "modelVersion": model_override or "deterministic",
+                "modelVersion": strategy_invocation.model_version,
+                "thinkingEffort": strategy_invocation.thinking_effort,
                 "promptVersion": state.run.promptVersion,
                 "executionConfig": _execution_config_payload(runtime_settings, state.run),
             },
@@ -361,6 +431,19 @@ async def _execute_agent_run(
                     seenResumeIds=updated_seen_ids,
                 )
             )
+            if new_candidates:
+                persisted_candidates = await io.persist_candidate_snapshots(
+                    PersistCandidateSnapshotsRequestModel(
+                        caseId=state.run.caseId,
+                        candidates=new_candidates,
+                    )
+                )
+                state.persisted_candidates.update(
+                    {
+                        item.externalIdentityId: item
+                        for item in persisted_candidates.persisted
+                    }
+                )
 
             analyzed_candidates = await _analyze_round_candidates(
                 agents=agents,
@@ -368,8 +451,27 @@ async def _execute_agent_run(
                 round_no=round_no,
                 strategy=strategy,
                 candidates=new_candidates,
-                model_override=model_override,
+                persisted_candidates=state.persisted_candidates,
+                invocation=resume_invocation,
             )
+            if analyzed_candidates:
+                await io.persist_resume_analyses(
+                    PersistResumeAnalysesRequestModel(
+                        analyses=[
+                            PersistResumeAnalysisItemModel(
+                                candidateId=analyzed.shortlisted.candidate_id,
+                                externalIdentityId=analyzed.shortlisted.candidate.externalIdentityId,
+                                resumeSnapshotId=analyzed.resume_snapshot_id,
+                                modelVersion=analyzed.model_version,
+                                promptVersion=analyzed.prompt_version,
+                                summary=analyzed.shortlisted.reason,
+                                evidence=analyzed.evidence,
+                                concerns=analyzed.concerns,
+                            )
+                            for analyzed in analyzed_candidates
+                        ]
+                    )
+                )
             analysis_step = _append_step(
                 state,
                 round_no=round_no,
@@ -384,7 +486,8 @@ async def _execute_agent_run(
                 payload={
                     "analyses": [
                         {
-                            "candidateId": analyzed.shortlisted.candidate.externalIdentityId,
+                            "candidateId": analyzed.shortlisted.candidate_id,
+                            "externalIdentityId": analyzed.shortlisted.candidate.externalIdentityId,
                             "name": analyzed.shortlisted.candidate.name,
                             "score": round(analyzed.shortlisted.score, 4),
                             "reason": analyzed.shortlisted.reason,
@@ -392,6 +495,7 @@ async def _execute_agent_run(
                             "concerns": analyzed.concerns,
                             "promptText": analyzed.prompt_text,
                             "modelVersion": analyzed.model_version,
+                            "thinkingEffort": analyzed.thinking_effort,
                             "promptVersion": analyzed.prompt_version,
                         }
                         for analyzed in analyzed_candidates
@@ -416,8 +520,14 @@ async def _execute_agent_run(
                     "analyzedCandidateIds": [
                         analyzed.shortlisted.candidate.externalIdentityId for analyzed in analyzed_candidates
                     ],
+                    "analyzedCaseCandidateIds": [
+                        analyzed.shortlisted.candidate_id for analyzed in analyzed_candidates
+                    ],
                     "retainedCandidateIds": [
                         candidate.candidate.externalIdentityId for candidate in state.retained_candidates
+                    ],
+                    "retainedCaseCandidateIds": [
+                        candidate.candidate_id for candidate in state.retained_candidates
                     ],
                 },
             )
@@ -474,7 +584,8 @@ async def _execute_agent_run(
             )
             reflection_result = await agents.search_reflector.run(
                 reflection_prompt,
-                model=model_override,
+                model=reflection_invocation.model,
+                model_settings=reflection_invocation.model_settings,
                 output_type=SearchReflectorOutputModel,
             )
             minimum_round_override_applied = False
@@ -506,7 +617,8 @@ async def _execute_agent_run(
                     "queryDelta": build_query_delta(current_query, next_query),
                     "minimumRoundsOverrideApplied": minimum_round_override_applied,
                     "promptText": reflection_prompt,
-                    "modelVersion": model_override or "deterministic",
+                    "modelVersion": reflection_invocation.model_version,
+                    "thinkingEffort": reflection_invocation.thinking_effort,
                     "promptVersion": state.run.promptVersion,
                     "executionConfig": _execution_config_payload(runtime_settings, state.run),
                 },
@@ -666,7 +778,8 @@ async def _analyze_round_candidates(
     round_no: int,
     strategy: NormalizedStrategyModel,
     candidates: list[WorkerCandidateModel],
-    model_override: str | None,
+    persisted_candidates: dict[str, PersistedCandidateRefModel],
+    invocation: ResolvedAgentInvocation,
 ) -> list[_AnalyzedCandidate]:
     if not candidates:
         return []
@@ -684,7 +797,8 @@ async def _analyze_round_candidates(
         *[
             agents.resume_matcher.run(
                 prompt,
-                model=model_override,
+                model=invocation.model,
+                model_settings=invocation.model_settings,
                 output_type=ResumeMatcherOutputModel,
             )
             for prompt in prompts
@@ -692,18 +806,26 @@ async def _analyze_round_candidates(
     )
     analyzed_candidates: list[_AnalyzedCandidate] = []
     for candidate, prompt, result in zip(candidates, prompts, results, strict=True):
+        persisted_candidate = persisted_candidates.get(candidate.externalIdentityId)
+        if persisted_candidate is None:
+            raise RuntimeError(
+                f"Persisted candidate reference missing for {candidate.externalIdentityId}."
+            )
         output = result.output
         analyzed_candidates.append(
             _AnalyzedCandidate(
                 shortlisted=_ShortlistedCandidate(
+                    candidate_id=persisted_candidate.candidateId,
                     candidate=candidate,
                     score=max(0.0, min(output.score, 0.99)),
                     reason=output.summary,
                     source_round=round_no,
                 ),
+                resume_snapshot_id=persisted_candidate.resumeSnapshotId,
                 prompt_text=prompt,
-                model_version=model_override or "deterministic",
+                model_version=invocation.model_version,
                 prompt_version=run.promptVersion,
+                thinking_effort=invocation.thinking_effort,
                 evidence=list(output.evidence),
                 concerns=list(output.concerns),
             )

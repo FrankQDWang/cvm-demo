@@ -17,7 +17,7 @@ from cvm_platform.api.dependencies import service_dependency
 from cvm_platform.application.agent_tracing import AgentRunTracer, AgentTraceObservation, TraceObservationType
 from cvm_platform.application.dto import AgentRunRecord
 from cvm_platform.application.service import PlatformService
-from cvm_platform.domain.types import JsonValue
+from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
 from cvm_platform.domain.ports import ResumeSourcePort
 from cvm_platform.infrastructure.db import Base
 from cvm_platform.infrastructure.service_factory import build_runtime_config
@@ -143,8 +143,9 @@ class _FakeAgentRunTracer:
         sourcing_preference_text: str,
         model_version: str,
         prompt_version: str,
+        agent_runtime_config: AgentRuntimeConfigPayload,
     ) -> Iterator[_FakeTraceHandle]:
-        del jd_text, sourcing_preference_text, model_version, prompt_version
+        del jd_text, sourcing_preference_text, model_version, prompt_version, agent_runtime_config
         yield _FakeTraceHandle(run_id)
 
 

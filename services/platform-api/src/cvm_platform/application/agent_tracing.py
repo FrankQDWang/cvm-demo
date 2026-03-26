@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from typing import Literal, Protocol
 
-from cvm_platform.domain.types import JsonValue
+from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
 
 
 TraceObservationType = Literal["agent", "chain", "tool", "span", "generation"]
@@ -73,6 +73,7 @@ class AgentRunTracer(Protocol):
         sourcing_preference_text: str,
         model_version: str,
         prompt_version: str,
+        agent_runtime_config: AgentRuntimeConfigPayload,
     ) -> AbstractContextManager[AgentRunTraceHandle]: ...
 
 
@@ -148,6 +149,7 @@ class NoOpAgentRunTracer:
         sourcing_preference_text: str,
         model_version: str,
         prompt_version: str,
+        agent_runtime_config: AgentRuntimeConfigPayload,
     ) -> Iterator[AgentRunTraceHandle]:
-        del run_id, jd_text, sourcing_preference_text, model_version, prompt_version
+        del run_id, jd_text, sourcing_preference_text, model_version, prompt_version, agent_runtime_config
         yield NoOpAgentRunTraceHandle()

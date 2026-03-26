@@ -5,6 +5,7 @@ from datetime import datetime
 
 from cvm_platform.domain.types import (
     AgentRunConfigPayload,
+    AgentRuntimeConfigPayload,
     AgentRunStatus,
     AgentRunStepPayload,
     AgentShortlistCandidatePayload,
@@ -41,6 +42,7 @@ class JDVersionRecord:
 @dataclass(slots=True)
 class AgentRunRecord:
     id: str
+    case_id: str
     status: AgentRunStatus
     jd_text: str
     sourcing_preference_text: str
@@ -49,6 +51,7 @@ class AgentRunRecord:
     current_round: int
     model_version: str
     prompt_version: str
+    agent_runtime_config: AgentRuntimeConfigPayload | None
     workflow_id: str | None
     temporal_namespace: str | None
     temporal_task_queue: str | None

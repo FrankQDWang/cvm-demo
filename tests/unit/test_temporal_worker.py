@@ -4,12 +4,16 @@ import asyncio
 
 import pytest
 
+from cvm_platform.settings.config import Settings
+from cvm_worker import agents as worker_agents
 from cvm_worker import main as worker_main
 from cvm_worker import workflows
 from cvm_worker.activities import (
     cts_search_candidates,
     load_agent_run_snapshot,
     persist_agent_run_patch,
+    persist_candidate_snapshots,
+    persist_resume_analyses,
     publish_langfuse_trace,
 )
 from cvm_worker.workflows import AgentRunWorkflow
@@ -58,14 +62,12 @@ def test_run_worker_builds_temporal_worker_with_plugin(monkeypatch) -> None:
             workflows,
             activities,
             activity_executor,
-            plugins,
         ) -> None:
             calls["client"] = client
             calls["task_queue"] = task_queue
             calls["workflows"] = workflows
             calls["activities"] = activities
             calls["activity_executor"] = activity_executor
-            calls["worker_plugins"] = plugins
 
         async def run(self) -> None:
             calls["ran"] = True
@@ -97,12 +99,13 @@ def test_run_worker_builds_temporal_worker_with_plugin(monkeypatch) -> None:
     assert calls["temporal_host"] == "127.0.0.1:7233"
     assert calls["namespace"] == "default"
     assert calls["client_plugins"] == [plugin]
-    assert calls["worker_plugins"] == [plugin]
     assert calls["workflows"] == [AgentRunWorkflow]
     assert calls["activities"] == [
         load_agent_run_snapshot,
         persist_agent_run_patch,
         cts_search_candidates,
+        persist_candidate_snapshots,
+        persist_resume_analyses,
         publish_langfuse_trace,
     ]
 
@@ -123,3 +126,66 @@ def test_worker_main_uses_asyncio_runner(monkeypatch) -> None:
     worker_main.main()
 
     assert calls["called"] is True
+
+
+def test_resolve_agent_invocation_uses_responses_api_when_thinking_is_enabled() -> None:
+    settings = Settings.model_construct(agent_profile="live")
+
+    invocation = worker_agents.resolve_agent_invocation(
+        settings,
+        model_version="gpt-5.4-mini",
+        thinking_effort="low",
+    )
+
+    assert invocation.model == "openai-responses:gpt-5.4-mini"
+    assert invocation.model_version == "openai-responses:gpt-5.4-mini"
+    assert invocation.thinking_effort == "low"
+    assert invocation.model_settings == {"thinking": "low"}
+
+
+def test_resolve_agent_invocation_keeps_chat_model_when_thinking_is_disabled() -> None:
+    settings = Settings.model_construct(agent_profile="live")
+
+    invocation = worker_agents.resolve_agent_invocation(
+        settings,
+        model_version="gpt-5.4-mini",
+        thinking_effort="none",
+    )
+
+    assert invocation.model == "openai:gpt-5.4-mini"
+    assert invocation.model_version == "openai:gpt-5.4-mini"
+    assert invocation.thinking_effort == "none"
+    assert invocation.model_settings == {"thinking": False}
+
+
+def test_provider_factory_accepts_openai_responses(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, *, api_key: str, base_url: str | None, max_retries: int, timeout: int) -> None:
+            captured["api_key"] = api_key
+            captured["base_url"] = base_url
+            captured["max_retries"] = max_retries
+            captured["timeout"] = timeout
+
+    monkeypatch.setattr(worker_agents, "AsyncOpenAI", FakeAsyncOpenAI)
+    settings = Settings.model_construct(
+        agent_profile="live",
+        openai_api_key="test-key",
+        openai_base_url="",
+        agent_model_timeout_seconds=17,
+    )
+
+    provider = worker_agents._provider_factory(
+        settings=settings,
+        run_context=None,  # type: ignore[arg-type]
+        provider_name="openai-responses",
+    )
+
+    assert provider is not None
+    assert captured == {
+        "api_key": "test-key",
+        "base_url": None,
+        "max_retries": 0,
+        "timeout": 17,
+    }

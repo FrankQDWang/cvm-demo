@@ -5,14 +5,17 @@ from typing import Literal, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from cvm_platform.application.dto import AgentRunRecord
-from cvm_platform.application.agent_runs import build_search_strategy
+from cvm_platform.application.agent_runs import build_search_strategy, effective_agent_runtime_config
 from cvm_platform.domain.types import (
     AgentRunConfigPayload,
+    AgentRuntimeConfigEntryPayload,
+    AgentRuntimeConfigPayload,
     AgentRunStepPayload,
     AgentShortlistCandidatePayload,
+    AgentThinkingEffort,
     CandidateData,
-    ResumeProjectionPayload,
     NormalizedQueryPayload,
+    ResumeProjectionPayload,
     SearchPageData,
     SearchQueryPayload,
     StructuredFiltersPayload,
@@ -210,6 +213,46 @@ class WorkerSearchPageModel(BaseModel):
         )
 
 
+class PersistedCandidateRefModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidateId: str
+    externalIdentityId: str
+    resumeSnapshotId: str
+
+
+class PersistCandidateSnapshotsRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    caseId: str
+    candidates: list[WorkerCandidateModel]
+
+
+class PersistCandidateSnapshotsResultModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    persisted: list[PersistedCandidateRefModel]
+
+
+class PersistResumeAnalysisItemModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidateId: str
+    externalIdentityId: str
+    resumeSnapshotId: str
+    modelVersion: str
+    promptVersion: str
+    summary: str
+    evidence: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+
+
+class PersistResumeAnalysesRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    analyses: list[PersistResumeAnalysisItemModel] = Field(default_factory=list)
+
+
 class AgentRunStepModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -251,6 +294,7 @@ class AgentRunStepModel(BaseModel):
 class ShortlistCandidateModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    candidateId: str
     externalIdentityId: str
     name: str
     title: str
@@ -269,16 +313,47 @@ class ShortlistCandidateModel(BaseModel):
         return cast(AgentShortlistCandidatePayload, cast(object, self.model_dump()))
 
 
+class AgentRuntimeConfigEntryModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    modelVersion: str = Field(min_length=1)
+    thinkingEffort: AgentThinkingEffort | None = None
+
+    @classmethod
+    def from_payload(cls, payload: AgentRuntimeConfigEntryPayload) -> "AgentRuntimeConfigEntryModel":
+        return cls.model_validate(payload)
+
+    def to_payload(self) -> AgentRuntimeConfigEntryPayload:
+        return cast(AgentRuntimeConfigEntryPayload, cast(object, self.model_dump()))
+
+
+class AgentRuntimeConfigModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    strategyExtractor: AgentRuntimeConfigEntryModel
+    resumeMatcher: AgentRuntimeConfigEntryModel
+    searchReflector: AgentRuntimeConfigEntryModel
+
+    @classmethod
+    def from_payload(cls, payload: AgentRuntimeConfigPayload) -> "AgentRuntimeConfigModel":
+        return cls.model_validate(payload)
+
+    def to_payload(self) -> AgentRuntimeConfigPayload:
+        return cast(AgentRuntimeConfigPayload, cast(object, self.model_dump()))
+
+
 class AgentRunSnapshotModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
+    caseId: str
     status: Literal["queued", "running", "completed", "failed"]
     jdText: str
     sourcingPreferenceText: str
     config: AgentRunConfigPayload
     currentRound: int
     modelVersion: str
+    agentRuntimeConfig: AgentRuntimeConfigModel
     promptVersion: str
     workflowId: str | None
     temporalNamespace: str | None
@@ -295,12 +370,19 @@ class AgentRunSnapshotModel(BaseModel):
     def from_record(cls, run: AgentRunRecord) -> "AgentRunSnapshotModel":
         return cls(
             id=run.id,
+            caseId=run.case_id,
             status=run.status,
             jdText=run.jd_text,
             sourcingPreferenceText=run.sourcing_preference_text,
             config=run.config,
             currentRound=run.current_round,
             modelVersion=run.model_version,
+            agentRuntimeConfig=AgentRuntimeConfigModel.from_payload(
+                effective_agent_runtime_config(
+                    run.agent_runtime_config,
+                    fallback_model_version=run.model_version,
+                )
+            ),
             promptVersion=run.prompt_version,
             workflowId=run.workflow_id,
             temporalNamespace=run.temporal_namespace,

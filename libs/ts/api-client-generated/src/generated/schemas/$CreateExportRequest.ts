@@ -8,6 +8,7 @@ export const $CreateExportRequest = {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
         maskPolicy: {
             type: 'Enum',
@@ -17,11 +18,13 @@ export const $CreateExportRequest = {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
         idempotencyKey: {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
     },
 } as const;

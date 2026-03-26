@@ -8,6 +8,10 @@ export const $AgentRunResponse = {
             type: 'string',
             isRequired: true,
         },
+        caseId: {
+            type: 'string',
+            isRequired: true,
+        },
         status: {
             type: 'string',
             isRequired: true,
@@ -30,6 +34,10 @@ export const $AgentRunResponse = {
         },
         modelVersion: {
             type: 'string',
+            isRequired: true,
+        },
+        agentRuntimeConfig: {
+            type: 'AgentRuntimeConfig',
             isRequired: true,
         },
         promptVersion: {

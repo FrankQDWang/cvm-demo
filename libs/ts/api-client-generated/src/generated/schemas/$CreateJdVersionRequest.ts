@@ -8,11 +8,13 @@ export const $CreateJdVersionRequest = {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
         source: {
             type: 'string',
             isRequired: true,
             minLength: 1,
+            pattern: '^[^\\x00]*$',
         },
     },
 } as const;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from pathlib import Path
 
 from cvm_domain_kernel import new_id, now_utc
@@ -36,6 +37,9 @@ from cvm_platform.domain.types import (
     QueueSummaryPayload,
     to_json_object,
 )
+
+
+SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
 
 class PlatformService:
@@ -307,18 +311,26 @@ class PlatformService:
         )
 
     def _get_case(self, case_id: str) -> CaseRecord:
+        if not SAFE_IDENTIFIER_PATTERN.fullmatch(case_id):
+            raise NotFoundError("CASE_NOT_FOUND", f"Case {case_id} not found.")
         case = self.uow.cases.get(case_id)
         if case is None:
             raise NotFoundError("CASE_NOT_FOUND", f"Case {case_id} not found.")
         return case
 
     def _get_jd_version(self, case_id: str, jd_version_id: str) -> JDVersionRecord:
+        if not SAFE_IDENTIFIER_PATTERN.fullmatch(case_id):
+            raise NotFoundError("CASE_NOT_FOUND", f"Case {case_id} not found.")
+        if not SAFE_IDENTIFIER_PATTERN.fullmatch(jd_version_id):
+            raise NotFoundError("JD_VERSION_NOT_FOUND", f"JD version {jd_version_id} not found.")
         jd_version = self.uow.plans.get_jd_version(case_id, jd_version_id)
         if jd_version is None:
             raise NotFoundError("JD_VERSION_NOT_FOUND", f"JD version {jd_version_id} not found.")
         return jd_version
 
     def _get_candidate(self, candidate_id: str) -> CandidateRecord:
+        if not SAFE_IDENTIFIER_PATTERN.fullmatch(candidate_id):
+            raise NotFoundError("CANDIDATE_NOT_FOUND", f"Candidate {candidate_id} not found.")
         candidate = self.uow.candidates.get_candidate(candidate_id)
         if candidate is None:
             raise NotFoundError("CANDIDATE_NOT_FOUND", f"Candidate {candidate_id} not found.")

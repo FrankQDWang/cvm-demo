@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from cvm_platform.application.ports import PlatformUnitOfWork
 from cvm_platform.application.runtime import PlatformRuntimeConfig
 from cvm_platform.application.service import PlatformService
+from cvm_platform.domain.types import AgentThinkingEffort
 from cvm_platform.infrastructure.sqlalchemy_uow import SqlAlchemyPlatformUnitOfWork
 from cvm_platform.settings.config import Settings
 
@@ -20,6 +21,22 @@ def _parse_round_fetch_schedule(raw_schedule: str) -> list[int]:
 
 def build_runtime_config(settings: Settings) -> PlatformRuntimeConfig:
     round_fetch_schedule = _parse_round_fetch_schedule(settings.agent_round_fetch_schedule)
+    agent_model_overrides: dict[str, str] = {}
+    if settings.agent_model_strategy_extractor is not None:
+        agent_model_overrides["strategyExtractor"] = settings.agent_model_strategy_extractor
+    if settings.agent_model_resume_matcher is not None:
+        agent_model_overrides["resumeMatcher"] = settings.agent_model_resume_matcher
+    if settings.agent_model_search_reflector is not None:
+        agent_model_overrides["searchReflector"] = settings.agent_model_search_reflector
+
+    agent_thinking_overrides: dict[str, AgentThinkingEffort] = {}
+    if settings.agent_thinking_strategy_extractor is not None:
+        agent_thinking_overrides["strategyExtractor"] = settings.agent_thinking_strategy_extractor
+    if settings.agent_thinking_resume_matcher is not None:
+        agent_thinking_overrides["resumeMatcher"] = settings.agent_thinking_resume_matcher
+    if settings.agent_thinking_search_reflector is not None:
+        agent_thinking_overrides["searchReflector"] = settings.agent_thinking_search_reflector
+
     return PlatformRuntimeConfig(
         temporal_namespace=settings.temporal_namespace,
         temporal_task_queue=settings.temporal_task_queue,
@@ -30,6 +47,9 @@ def build_runtime_config(settings: Settings) -> PlatformRuntimeConfig:
         temporal_ui_base_url=settings.temporal_ui_base_url,
         temporal_visibility_backend=settings.temporal_visibility_backend,
         default_agent_model=settings.agent_model,
+        default_agent_thinking=settings.agent_thinking,
+        agent_model_overrides=agent_model_overrides,
+        agent_thinking_overrides=agent_thinking_overrides,
         default_agent_prompt_version=settings.agent_prompt_version,
         agent_profile=settings.agent_profile,
         default_agent_min_rounds=settings.agent_min_rounds,

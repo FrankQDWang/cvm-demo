@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type AgentShortlistCandidate = {
+    candidateId: string;
     externalIdentityId: string;
     name: string;
     title: string;

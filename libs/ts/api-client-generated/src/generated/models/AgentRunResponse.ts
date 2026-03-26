@@ -4,15 +4,18 @@
 /* eslint-disable */
 import type { AgentRunConfig } from './AgentRunConfig';
 import type { AgentRunStep } from './AgentRunStep';
+import type { AgentRuntimeConfig } from './AgentRuntimeConfig';
 import type { AgentShortlistCandidate } from './AgentShortlistCandidate';
 export type AgentRunResponse = {
     runId: string;
+    caseId: string;
     status: string;
     jdText: string;
     sourcingPreferenceText: string;
     config: AgentRunConfig;
     currentRound: number;
     modelVersion: string;
+    agentRuntimeConfig: AgentRuntimeConfig;
     promptVersion: string;
     workflowId: string | null;
     temporalNamespace: string | null;

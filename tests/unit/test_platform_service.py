@@ -6,7 +6,13 @@ import pytest
 
 from cvm_domain_kernel import new_id, now_utc
 from cvm_platform.application.agent_tracing import NoOpAgentRunTracer
-from cvm_platform.application.dto import AgentRunRecord, CandidateRecord
+from cvm_platform.application.dto import (
+    AgentRunRecord,
+    CandidateRecord,
+    ResumeAnalysisRecord,
+    ResumeSnapshotRecord,
+    VerdictHistoryRecord,
+)
 from cvm_platform.domain.errors import NotFoundError
 from tests.support.api_harness import build_test_service
 
@@ -76,6 +82,72 @@ def test_save_verdict_persists_history_and_updates_candidate(tmp_path) -> None:
         engine.dispose()
 
 
+def test_get_candidate_detail_returns_snapshot_analysis_and_history(tmp_path) -> None:
+    service, session, engine, _settings = build_test_service(tmp_path)
+    try:
+        case = service.create_case("Agent Role", "team-cn")
+        candidate = _candidate(case_id=case.id, snapshot_id="snap_existing", verdict="Match")
+        service.uow.candidates.save_candidate(candidate)
+        service.uow.candidates.save_resume_snapshot(
+            ResumeSnapshotRecord(
+                id="snap_existing",
+                case_candidate_id=candidate.id,
+                source_hash="hash_1",
+                payload={
+                    "workYear": 8,
+                    "currentLocation": "Shanghai",
+                    "expectedLocation": "Shanghai",
+                    "jobState": "open",
+                    "expectedSalary": "50k",
+                    "age": 30,
+                    "education": [],
+                    "workExperience": [],
+                    "workSummaries": ["Built agent systems"],
+                    "projectNames": ["Agent Platform"],
+                },
+                created_at=now_utc(),
+            )
+        )
+        service.uow.candidates.save_resume_analysis(
+            ResumeAnalysisRecord(
+                id="analysis_1",
+                resume_snapshot_id="snap_existing",
+                model_version="gpt-5.4-mini",
+                prompt_version="agent-loop-v1",
+                summary="Strong agent platform fit",
+                evidence_spans=["Python", "workflow orchestration"],
+                risk_flags=[],
+                status="completed",
+                created_at=now_utc(),
+            )
+        )
+        service.uow.candidates.save_verdict_history(
+            VerdictHistoryRecord(
+                id="ver_1",
+                case_candidate_id=candidate.id,
+                verdict="Match",
+                reasons=["python", "agent"],
+                notes="Looks strong",
+                actor_id="reviewer_1",
+                resume_snapshot_id="snap_existing",
+                created_at=now_utc(),
+            )
+        )
+        service.uow.commit()
+
+        detail = service.get_candidate_detail(candidate.id)
+
+        assert detail.candidate.id == candidate.id
+        assert detail.resume_snapshot.id == "snap_existing"
+        assert detail.ai_analysis is not None
+        assert detail.ai_analysis.summary == "Strong agent platform fit"
+        assert len(detail.verdict_history) == 1
+        assert detail.verdict_history[0].actor_id == "reviewer_1"
+    finally:
+        session.close()
+        engine.dispose()
+
+
 def test_create_export_writes_masked_file_and_reuses_idempotency_key(tmp_path) -> None:
     service, session, engine, _settings = build_test_service(tmp_path)
     try:
@@ -119,6 +191,7 @@ def test_get_ops_summary_and_create_eval_run_report_agent_run_metrics(tmp_path) 
         service.uow.agent_runs.save_run(
             AgentRunRecord(
                 id="agent_done",
+                case_id=case.id,
                 status="completed",
                 jd_text="Need Python agent engineer",
                 sourcing_preference_text="Prefer evals",
@@ -127,6 +200,7 @@ def test_get_ops_summary_and_create_eval_run_report_agent_run_metrics(tmp_path) 
                 current_round=2,
                 model_version="gpt-5.4-mini",
                 prompt_version="agent-loop-v1",
+                agent_runtime_config=None,
                 workflow_id="agent-run-agent_done",
                 temporal_namespace="default",
                 temporal_task_queue="cvm-agent-runs",

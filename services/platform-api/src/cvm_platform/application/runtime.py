@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from cvm_platform.domain.types import AgentThinkingEffort
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +18,9 @@ class PlatformRuntimeConfig:
     temporal_ui_base_url: str
     temporal_visibility_backend: str
     default_agent_model: str
+    default_agent_thinking: AgentThinkingEffort | None
+    agent_model_overrides: Mapping[str, str]
+    agent_thinking_overrides: Mapping[str, AgentThinkingEffort]
     default_agent_prompt_version: str
     agent_profile: str
     default_agent_min_rounds: int

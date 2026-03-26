@@ -3,19 +3,22 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+import hashlib
+import json
 from typing import Callable, cast
 
 from sqlalchemy.orm import Session
 from temporalio import activity
 
-from cvm_domain_kernel import now_utc
+from cvm_domain_kernel import new_id, now_utc
 from cvm_platform.application.agent_tracing import (
     AgentRunTraceHandle,
     AgentRunTracer,
     AgentTraceObservation,
     TraceObservationType,
 )
-from cvm_platform.application.dto import AgentRunRecord
+from cvm_platform.application.agent_runs import effective_agent_runtime_config
+from cvm_platform.application.dto import AgentRunRecord, CandidateRecord, ResumeAnalysisRecord, ResumeSnapshotRecord
 from cvm_platform.domain.errors import NotFoundError
 from cvm_platform.domain.ports import ResumeSourcePort
 from cvm_platform.domain.types import JsonObject, JsonValue, to_json_object, to_json_value
@@ -28,8 +31,13 @@ from cvm_worker.models import (
     AgentRunSnapshotModel,
     AgentRunStepModel,
     CtsSearchRequestModel,
+    PersistCandidateSnapshotsRequestModel,
+    PersistCandidateSnapshotsResultModel,
+    PersistResumeAnalysesRequestModel,
+    PersistedCandidateRefModel,
     RunPersistencePatchModel,
     TracePublicationModel,
+    WorkerCandidateModel,
     WorkerSearchPageModel,
 )
 
@@ -134,6 +142,10 @@ def publish_langfuse_trace_impl(
             sourcing_preference_text=run.sourcing_preference_text,
             model_version=run.model_version,
             prompt_version=run.prompt_version,
+            agent_runtime_config=effective_agent_runtime_config(
+                run.agent_runtime_config,
+                fallback_model_version=run.model_version,
+            ),
         ) as trace_handle:
             _replay_trace(run, trace_handle, runtime_settings)
             run.langfuse_trace_id = trace_handle.trace_id
@@ -144,6 +156,72 @@ def publish_langfuse_trace_impl(
             traceId=run.langfuse_trace_id,
             traceUrl=run.langfuse_trace_url,
         )
+
+
+def persist_candidate_snapshots_impl(
+    request: PersistCandidateSnapshotsRequestModel,
+    *,
+    session_factory: SessionFactory | None = None,
+) -> PersistCandidateSnapshotsResultModel:
+    with _session_scope(session_factory) as uow:
+        timestamp = now_utc()
+        persisted: list[PersistedCandidateRefModel] = []
+        for candidate in request.candidates:
+            candidate_record = _upsert_case_candidate(
+                uow=uow,
+                case_id=request.caseId,
+                candidate=candidate,
+                timestamp=timestamp,
+            )
+            snapshot = _upsert_resume_snapshot(
+                uow=uow,
+                candidate=candidate,
+                candidate_record=candidate_record,
+                timestamp=timestamp,
+            )
+            candidate_record.latest_resume_snapshot_id = snapshot.id
+            candidate_record.updated_at = timestamp
+            uow.candidates.save_candidate(candidate_record)
+            persisted.append(
+                PersistedCandidateRefModel(
+                    candidateId=candidate_record.id,
+                    externalIdentityId=candidate.externalIdentityId,
+                    resumeSnapshotId=snapshot.id,
+                )
+            )
+        uow.commit()
+        return PersistCandidateSnapshotsResultModel(persisted=persisted)
+
+
+def persist_resume_analyses_impl(
+    request: PersistResumeAnalysesRequestModel,
+    *,
+    session_factory: SessionFactory | None = None,
+) -> int:
+    if not request.analyses:
+        return 0
+    with _session_scope(session_factory) as uow:
+        timestamp = now_utc()
+        for analysis in request.analyses:
+            uow.candidates.save_resume_analysis(
+                ResumeAnalysisRecord(
+                    id=_resume_analysis_record_id(
+                        resume_snapshot_id=analysis.resumeSnapshotId,
+                        model_version=analysis.modelVersion,
+                        prompt_version=analysis.promptVersion,
+                    ),
+                    resume_snapshot_id=analysis.resumeSnapshotId,
+                    model_version=analysis.modelVersion,
+                    prompt_version=analysis.promptVersion,
+                    summary=analysis.summary,
+                    evidence_spans=list(analysis.evidence),
+                    risk_flags=list(analysis.concerns),
+                    status="completed",
+                    created_at=timestamp,
+                )
+            )
+        uow.commit()
+    return len(request.analyses)
 
 
 @activity.defn(name="load_agent_run_snapshot")
@@ -166,11 +244,104 @@ def publish_langfuse_trace(run_id: str) -> TracePublicationModel:
     return publish_langfuse_trace_impl(run_id, settings)
 
 
+@activity.defn(name="persist_candidate_snapshots")
+def persist_candidate_snapshots(request: PersistCandidateSnapshotsRequestModel) -> PersistCandidateSnapshotsResultModel:
+    return persist_candidate_snapshots_impl(request)
+
+
+@activity.defn(name="persist_resume_analyses")
+def persist_resume_analyses(request: PersistResumeAnalysesRequestModel) -> int:
+    return persist_resume_analyses_impl(request)
+
+
 def _require_run(uow: SqlAlchemyPlatformUnitOfWork, run_id: str) -> AgentRunRecord:
     run = uow.agent_runs.get_run(run_id)
     if run is None:
         raise NotFoundError("AGENT_RUN_NOT_FOUND", f"Agent run {run_id} not found.")
     return run
+
+
+def _upsert_case_candidate(
+    *,
+    uow: SqlAlchemyPlatformUnitOfWork,
+    case_id: str,
+    candidate: WorkerCandidateModel,
+    timestamp,
+) -> CandidateRecord:
+    existing = uow.candidates.find_by_case_and_external_identity(case_id, candidate.externalIdentityId)
+    if existing is None:
+        return CandidateRecord(
+            id=new_id("cand"),
+            case_id=case_id,
+            external_identity_id=candidate.externalIdentityId,
+            latest_resume_snapshot_id=None,
+            latest_verdict=None,
+            dedupe_status="unique",
+            name=candidate.name,
+            title=candidate.title,
+            company=candidate.company,
+            location=candidate.location,
+            summary=candidate.summary,
+            email=candidate.email,
+            phone=candidate.phone,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+    existing.name = candidate.name
+    existing.title = candidate.title
+    existing.company = candidate.company
+    existing.location = candidate.location
+    existing.summary = candidate.summary
+    existing.email = candidate.email
+    existing.phone = candidate.phone
+    existing.updated_at = timestamp
+    return existing
+
+
+def _upsert_resume_snapshot(
+    *,
+    uow: SqlAlchemyPlatformUnitOfWork,
+    candidate: WorkerCandidateModel,
+    candidate_record: CandidateRecord,
+    timestamp,
+) -> ResumeSnapshotRecord:
+    source_hash = _resume_snapshot_source_hash(candidate)
+    existing = uow.candidates.find_resume_snapshot_by_source_hash(candidate_record.id, source_hash)
+    if existing is not None:
+        return existing
+    snapshot = ResumeSnapshotRecord(
+        id=new_id("snap"),
+        case_candidate_id=candidate_record.id,
+        source_hash=source_hash,
+        payload=candidate.resumeProjection,
+        created_at=timestamp,
+    )
+    uow.candidates.save_resume_snapshot(snapshot)
+    return snapshot
+
+
+def _resume_snapshot_source_hash(candidate: WorkerCandidateModel) -> str:
+    payload = {
+        "externalIdentityId": candidate.externalIdentityId,
+        "name": candidate.name,
+        "title": candidate.title,
+        "company": candidate.company,
+        "location": candidate.location,
+        "summary": candidate.summary,
+        "resumeProjection": candidate.resumeProjection,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _resume_analysis_record_id(
+    *,
+    resume_snapshot_id: str,
+    model_version: str,
+    prompt_version: str,
+) -> str:
+    payload = f"{resume_snapshot_id}:{model_version}:{prompt_version}".encode("utf-8")
+    return f"analysis_{hashlib.sha256(payload).hexdigest()[:32]}"
 
 
 def _audit_status_transition(
@@ -226,6 +397,10 @@ def _replay_trace(
     trace_handle: AgentRunTraceHandle,
     runtime_settings: Settings,
 ) -> None:
+    agent_runtime_config = effective_agent_runtime_config(
+        run.agent_runtime_config,
+        fallback_model_version=run.model_version,
+    )
     steps = [AgentRunStepModel.from_payload(step) for step in run.steps]
     strategy_step = next((step for step in steps if step.stepType == "strategy" and step.roundNo is None), None)
     if strategy_step is not None:
@@ -236,6 +411,7 @@ def _replay_trace(
             metadata=to_json_object({
                 "summary": strategy_step.summary,
                 "stepType": strategy_step.stepType,
+                "thinkingEffort": strategy_step.payload.get("thinkingEffort"),
             }),
             model=cast(str | None, strategy_step.payload.get("modelVersion")),
             version=cast(str | None, strategy_step.payload.get("promptVersion")),
@@ -288,6 +464,7 @@ def _replay_trace(
         output=root_output,
         metadata=to_json_object({
             "seenResumeCount": len(run.seen_resume_ids),
+            "agentRuntimeConfig": agent_runtime_config,
             "executionConfig": {
                 "minRounds": runtime_settings.agent_min_rounds,
                 "maxRounds": int(run.config["maxRounds"]),
@@ -318,7 +495,13 @@ def _replay_round_steps(
             name=name,
             as_type=as_type,
             input=step_input,
-            metadata=to_json_object({"stepType": step.stepType, "title": step.title}),
+            metadata=to_json_object(
+                {
+                    "stepType": step.stepType,
+                    "title": step.title,
+                    "thinkingEffort": step.payload.get("thinkingEffort"),
+                }
+            ),
             model=cast(str | None, step.payload.get("modelVersion")),
             version=cast(str | None, step.payload.get("promptVersion")),
             level="WARNING" if step.stepType == "stop" else None,
@@ -346,6 +529,7 @@ def _replay_analysis_step(
                 metadata=to_json_object({
                     "candidateId": analysis["candidateId"],
                     "candidateName": analysis.get("name"),
+                    "thinkingEffort": analysis.get("thinkingEffort"),
                 }),
                 model=cast(str | None, analysis.get("modelVersion")),
                 version=cast(str | None, analysis.get("promptVersion")),

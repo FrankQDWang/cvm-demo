@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Any
 
 from pydantic import (
@@ -21,8 +21,8 @@ class CreateCaseRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    title: constr(min_length=1)
-    ownerTeamId: constr(min_length=1)
+    title: constr(pattern=r'^[^\x00]*$', min_length=1)
+    ownerTeamId: constr(pattern=r'^[^\x00]*$', min_length=1)
 
 
 class CreateCaseResponse(BaseModel):
@@ -34,8 +34,8 @@ class CreateJdVersionRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    rawText: constr(min_length=1)
-    source: constr(min_length=1)
+    rawText: constr(pattern=r'^[^\x00]*$', min_length=1)
+    source: constr(pattern=r'^[^\x00]*$', min_length=1)
 
 
 class CreateJdVersionResponse(BaseModel):
@@ -57,12 +57,39 @@ class AgentRunConfig(BaseModel):
     finalTopK: conint(ge=1)
 
 
+class ThinkingEffort(Enum):
+    none = 'none'
+    minimal = 'minimal'
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+    xhigh = 'xhigh'
+    NoneType_None = None
+
+
+class AgentRuntimeConfigEntry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    modelVersion: str
+    thinkingEffort: ThinkingEffort | None
+
+
+class AgentRuntimeConfig(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    strategyExtractor: AgentRuntimeConfigEntry
+    resumeMatcher: AgentRuntimeConfigEntry
+    searchReflector: AgentRuntimeConfigEntry
+
+
 class CreateAgentRunRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    jdText: constr(min_length=1)
-    sourcingPreferenceText: constr(min_length=1)
+    jdText: constr(pattern=r'^[^\x00]*$', min_length=1)
+    sourcingPreferenceText: constr(pattern=r'^[^\x00]*$', min_length=1)
 
 
 class CreateAgentRunResponse(BaseModel):
@@ -91,6 +118,7 @@ class AgentShortlistCandidate(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+    candidateId: str
     externalIdentityId: str
     name: str
     title: str
@@ -128,12 +156,14 @@ class AgentRunResponse(BaseModel):
         extra='forbid',
     )
     runId: str
+    caseId: str
     status: str
     jdText: str
     sourcingPreferenceText: str
     config: AgentRunConfig
     currentRound: conint(ge=0)
     modelVersion: str
+    agentRuntimeConfig: AgentRuntimeConfig
     promptVersion: str
     workflowId: str | None
     temporalNamespace: str | None
@@ -232,9 +262,9 @@ class SaveVerdictRequest(BaseModel):
     )
     verdict: Verdict
     reasons: list[str]
-    notes: str | None = None
-    actorId: constr(min_length=1)
-    resumeSnapshotId: str | None = None
+    notes: constr(pattern=r'^[^\x00]*$') | None = None
+    actorId: constr(pattern=r'^[^\x00]*$', min_length=1)
+    resumeSnapshotId: constr(pattern=r'^[^\x00]*$') | None = None
 
 
 class SaveVerdictResponse(BaseModel):
@@ -255,10 +285,10 @@ class CreateExportRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    caseId: constr(min_length=1)
+    caseId: constr(pattern=r'^[^\x00]*$', min_length=1)
     maskPolicy: MaskPolicy
-    reason: constr(min_length=1)
-    idempotencyKey: constr(min_length=1)
+    reason: constr(pattern=r'^[^\x00]*$', min_length=1)
+    idempotencyKey: constr(pattern=r'^[^\x00]*$', min_length=1)
 
 
 class CreateExportResponse(BaseModel):
@@ -369,9 +399,9 @@ class CreateEvalRunRequest(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    suiteId: constr(min_length=1)
-    datasetId: constr(min_length=1)
-    targetVersion: constr(min_length=1)
+    suiteId: constr(pattern=r'^[^\x00]*$', min_length=1)
+    datasetId: constr(pattern=r'^[^\x00]*$', min_length=1)
+    targetVersion: constr(pattern=r'^[^\x00]*$', min_length=1)
 
 
 class CreateEvalRunResponse(BaseModel):

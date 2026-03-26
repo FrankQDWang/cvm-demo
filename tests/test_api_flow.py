@@ -16,16 +16,23 @@ def test_mainline_agent_flow(client: httpx.Client) -> None:
     ))
     run = wait_for_agent_run(client, created["runId"])
     diagnostic = wait_for_agent_temporal_diagnostic(client, created["runId"])
+    detail = read_json(client.get(f"/api/v1/case-candidates/{run['finalShortlist'][0]['candidateId']}"))
 
     assert run["status"] == "completed"
+    assert run["caseId"]
     assert run["workflowId"] == f"agent-run-{created['runId']}"
+    assert run["agentRuntimeConfig"]["strategyExtractor"]["modelVersion"]
+    assert "thinkingEffort" in run["agentRuntimeConfig"]["searchReflector"]
     assert len(run["finalShortlist"]) == 5
+    assert all(candidate["candidateId"] for candidate in run["finalShortlist"])
     assert len({candidate["externalIdentityId"] for candidate in run["finalShortlist"]}) == 5
     assert any(step["stepType"] == "strategy" for step in run["steps"])
     assert any(step["stepType"] == "search" for step in run["steps"])
     assert any(step["stepType"] == "analysis" for step in run["steps"])
     assert any(step["stepType"] == "reflection" for step in run["steps"])
     assert any(step["stepType"] == "finalize" for step in run["steps"])
+    assert detail["candidate"]["candidateId"] == run["finalShortlist"][0]["candidateId"]
+    assert detail["resumeView"]["projection"]["workExperience"] is not None
     assert run["langfuseTraceUrl"] is not None
     assert diagnostic["workflowId"] == f"agent-run-{created['runId']}"
     assert diagnostic["temporalExecutionFound"] is True

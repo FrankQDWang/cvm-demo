@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import {
   type AgentRunListResponse,
   type AgentRunResponse,
+  type CandidateDetailResponse,
   type CreateAgentRunRequest,
   type CreateAgentRunResponse,
   DefaultService,
@@ -38,6 +39,10 @@ export class PlatformApiService {
 
   getAgentRun(runId: string): Promise<AgentRunResponse> {
     return DefaultService.getAgentRun({ runId });
+  }
+
+  getCaseCandidate(candidateId: string): Promise<CandidateDetailResponse> {
+    return DefaultService.getCaseCandidate({ candidateId });
   }
 
   listAgentRuns(): Promise<AgentRunListResponse> {

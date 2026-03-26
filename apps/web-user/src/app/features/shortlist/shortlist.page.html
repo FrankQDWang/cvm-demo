@@ -56,6 +56,90 @@
             <p class="detail-label">推荐原因</p>
             <p class="detail-text">{{ row.candidate.reason }}</p>
           </div>
+          <div class="resume-shell">
+            <button
+              class="resume-toggle"
+              type="button"
+              [attr.aria-expanded]="isResumeExpanded(row)"
+              (click)="toggleResume(row)"
+            >
+              <span class="resume-toggle-title">完整简历</span>
+              <span class="resume-toggle-action">{{ resumeToggleLabel(row) }}</span>
+              <span class="resume-toggle-icon" aria-hidden="true">{{ resumeToggleIcon(row) }}</span>
+            </button>
+
+            <section class="resume-panel" *ngIf="isResumeExpanded(row)">
+              <p class="detail-loading" *ngIf="resumeDetailState(row).status === 'loading'">正在加载完整简历…</p>
+
+              <div class="resume-state" *ngIf="resumeDetailState(row).status === 'error'">
+                <p class="detail-error">{{ resumeDetailState(row).error }}</p>
+                <button class="resume-retry" type="button" (click)="retryResume(row, $event)">重新加载简历</button>
+              </div>
+
+              <ng-container *ngIf="resumeDetailState(row).status === 'loaded'">
+                <section class="resume-section">
+                  <p class="detail-label">基础概览</p>
+                  <div class="resume-overview-grid">
+                    <div class="resume-overview-item" *ngFor="let item of resumeOverview(row)">
+                      <span>{{ item.label }}</span>
+                      <strong>{{ item.value }}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="resume-section">
+                  <p class="detail-label">工作经历</p>
+                  <ng-container *ngIf="workExperience(row).length > 0; else emptyWorkExperience">
+                    <div class="resume-list">
+                      <article class="resume-item" *ngFor="let item of workExperience(row)">
+                        <div class="resume-item-head">
+                          <strong>{{ fallbackText(item.title) }}</strong>
+                          <span>{{ fallbackText(item.company) }}</span>
+                        </div>
+                        <p class="resume-meta">{{ workExperienceMeta(item.startTime, item.endTime, item.duration) }}</p>
+                        <p class="detail-text compact">{{ fallbackText(item.summary) }}</p>
+                      </article>
+                    </div>
+                  </ng-container>
+                </section>
+
+                <section class="resume-section">
+                  <p class="detail-label">教育经历</p>
+                  <ng-container *ngIf="educationItems(row).length > 0; else emptyEducation">
+                    <div class="resume-list">
+                      <article class="resume-item" *ngFor="let item of educationItems(row)">
+                        <div class="resume-item-head">
+                          <strong>{{ fallbackText(item.school) }}</strong>
+                          <span>{{ fallbackText(item.degree) }}</span>
+                        </div>
+                        <p class="resume-meta">
+                          {{ fallbackText(item.major) }} · {{ workExperienceMeta(item.startTime, item.endTime, null) }}
+                        </p>
+                      </article>
+                    </div>
+                  </ng-container>
+                </section>
+
+                <section class="resume-section">
+                  <p class="detail-label">工作摘要</p>
+                  <ng-container *ngIf="workSummaries(row).length > 0; else emptyWorkSummaries">
+                    <ul class="detail-bullets">
+                      <li *ngFor="let item of workSummaries(row)">{{ fallbackText(item) }}</li>
+                    </ul>
+                  </ng-container>
+                </section>
+
+                <section class="resume-section">
+                  <p class="detail-label">项目名称</p>
+                  <ng-container *ngIf="projectNames(row).length > 0; else emptyProjectNames">
+                    <div class="resume-tags">
+                      <span class="resume-tag" *ngFor="let item of projectNames(row)">{{ fallbackText(item) }}</span>
+                    </div>
+                  </ng-container>
+                </section>
+              </ng-container>
+            </section>
+          </div>
         </article>
       </div>
     </section>
@@ -74,4 +158,20 @@
 
 <ng-template #placeholderEmpty>
   <p>结果会出现在这里</p>
+</ng-template>
+
+<ng-template #emptyWorkExperience>
+  <p class="resume-empty">未提供</p>
+</ng-template>
+
+<ng-template #emptyEducation>
+  <p class="resume-empty">未提供</p>
+</ng-template>
+
+<ng-template #emptyWorkSummaries>
+  <p class="resume-empty">未提供</p>
+</ng-template>
+
+<ng-template #emptyProjectNames>
+  <p class="resume-empty">未提供</p>
 </ng-template>

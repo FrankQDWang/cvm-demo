@@ -23,6 +23,7 @@ def test_stack_agent_run_flow(stack_client: httpx.Client) -> None:
 
     assert run["status"] == "completed"
     assert run["workflowId"] == f"agent-run-{created['runId']}"
+    assert run["agentRuntimeConfig"]["searchReflector"]["modelVersion"]
     assert len(run["finalShortlist"]) == 5
     assert any(step["stepType"] == "strategy" for step in run["steps"])
     assert any(step["stepType"] == "analysis" for step in run["steps"])

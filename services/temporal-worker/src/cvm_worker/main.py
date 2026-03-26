@@ -14,6 +14,8 @@ from cvm_worker.activities import (
     cts_search_candidates,
     load_agent_run_snapshot,
     persist_agent_run_patch,
+    persist_candidate_snapshots,
+    persist_resume_analyses,
     publish_langfuse_trace,
 )
 from cvm_worker.workflows import AgentRunWorkflow
@@ -52,10 +54,11 @@ async def run_worker() -> None:
             load_agent_run_snapshot,
             persist_agent_run_patch,
             cts_search_candidates,
+            persist_candidate_snapshots,
+            persist_resume_analyses,
             publish_langfuse_trace,
         ],
         activity_executor=activity_executor,
-        plugins=[plugin],
     )
     await worker.run()
 

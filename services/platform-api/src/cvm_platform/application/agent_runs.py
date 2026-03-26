@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import cast
 
 from cvm_domain_kernel import new_id, now_utc
 
-from cvm_platform.application.dto import AgentRunRecord, AuditLogRecord
+from cvm_platform.application.dto import AgentRunRecord, AuditLogRecord, CaseRecord, JDVersionRecord
 from cvm_platform.application.policies import resolve_agent_model_version
 from cvm_platform.application.ports import PlatformUnitOfWork
 from cvm_platform.application.runtime import PlatformRuntimeConfig
 from cvm_platform.domain.errors import NotFoundError, ValidationError
 from cvm_platform.domain.types import (
     AgentRunConfigPayload,
+    AgentRuntimeConfigEntryPayload,
+    AgentRuntimeConfigPayload,
     AgentRunStepPayload,
+    AgentThinkingEffort,
     JsonObject,
     NormalizedQueryPayload,
     SearchQueryDeltaPayload,
@@ -25,6 +29,72 @@ from cvm_platform.domain.types import (
 
 MIN_AGENT_ROUNDS = 3
 MAX_AGENT_ROUNDS = 5
+AGENT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+AGENT_RUNTIME_ROLE_KEYS = ("strategyExtractor", "resumeMatcher", "searchReflector")
+IMPLICIT_AGENT_CASE_OWNER_TEAM_ID = "team-system"
+IMPLICIT_AGENT_JD_SOURCE = "agent-run-intake"
+
+
+def _legacy_agent_runtime_config(model_version: str) -> AgentRuntimeConfigPayload:
+    return {
+        "strategyExtractor": {"modelVersion": model_version, "thinkingEffort": None},
+        "resumeMatcher": {"modelVersion": model_version, "thinkingEffort": None},
+        "searchReflector": {"modelVersion": model_version, "thinkingEffort": None},
+    }
+
+
+def _coerce_agent_runtime_entry(
+    entry: object,
+    fallback_model_version: str,
+) -> AgentRuntimeConfigEntryPayload:
+    if not isinstance(entry, dict):
+        return {"modelVersion": fallback_model_version, "thinkingEffort": None}
+    model_version = entry.get("modelVersion")
+    thinking_effort = entry.get("thinkingEffort")
+    resolved_model_version = str(model_version).strip() if isinstance(model_version, str) else ""
+    normalized_thinking_effort: AgentThinkingEffort | None
+    if isinstance(thinking_effort, str):
+        normalized_thinking_effort = cast(
+            AgentThinkingEffort | None,
+            thinking_effort.strip().lower() or None,
+        )
+    else:
+        normalized_thinking_effort = None
+    return {
+        "modelVersion": resolved_model_version or fallback_model_version,
+        "thinkingEffort": normalized_thinking_effort,
+    }
+
+
+def effective_agent_runtime_config(
+    agent_runtime_config: AgentRuntimeConfigPayload | None,
+    *,
+    fallback_model_version: str,
+) -> AgentRuntimeConfigPayload:
+    if agent_runtime_config is None:
+        return _legacy_agent_runtime_config(fallback_model_version)
+    config = cast(dict[str, object], agent_runtime_config)
+    return {
+        role_key: _coerce_agent_runtime_entry(config.get(role_key), fallback_model_version)
+        for role_key in AGENT_RUNTIME_ROLE_KEYS
+    }
+
+
+def build_agent_runtime_config(
+    *,
+    baseline_model_version: str,
+    runtime_config: PlatformRuntimeConfig,
+) -> AgentRuntimeConfigPayload:
+    return {
+        role_key: {
+            "modelVersion": runtime_config.agent_model_overrides.get(role_key, baseline_model_version),
+            "thinkingEffort": runtime_config.agent_thinking_overrides.get(
+                role_key,
+                runtime_config.default_agent_thinking,
+            ),
+        }
+        for role_key in AGENT_RUNTIME_ROLE_KEYS
+    }
 
 
 def json_signature(value: object) -> str:
@@ -241,6 +311,17 @@ def normalize_agent_run_config(
     }
 
 
+def derive_agent_case_title(jd_text: str, *, timestamp: datetime) -> str:
+    for raw_line in jd_text.splitlines():
+        normalized = raw_line.strip().lstrip("-*#0123456789.、()（） ")
+        if not normalized:
+            continue
+        first_sentence = re.split(r"[。！？!?；;]", normalized, maxsplit=1)[0].strip()
+        if first_sentence:
+            return first_sentence[:72]
+    return f"Agent Run {timestamp.astimezone(UTC):%Y-%m-%d %H:%M}"
+
+
 class AgentRunsCoordinator:
     def __init__(
         self,
@@ -271,11 +352,20 @@ class AgentRunsCoordinator:
                 self.uow.commit()
             return existing
         resolved_model_version = resolve_agent_model_version(model_version, self.runtime_config)
+        agent_runtime_config = build_agent_runtime_config(
+            baseline_model_version=resolved_model_version,
+            runtime_config=self.runtime_config,
+        )
         normalized_config = normalize_agent_run_config(config, self.runtime_config)
         timestamp = now_utc()
+        case = self._create_implicit_case_with_jd(
+            jd_text=jd_text,
+            timestamp=timestamp,
+        )
         run_id = new_id("agent")
         run = AgentRunRecord(
             id=run_id,
+            case_id=case.id,
             status="queued",
             jd_text=jd_text,
             sourcing_preference_text=sourcing_preference_text,
@@ -284,6 +374,7 @@ class AgentRunsCoordinator:
             current_round=0,
             model_version=resolved_model_version,
             prompt_version=prompt_version,
+            agent_runtime_config=agent_runtime_config,
             workflow_id=f"agent-run-{run_id}",
             temporal_namespace=self.runtime_config.temporal_namespace,
             temporal_task_queue=self.runtime_config.temporal_task_queue,
@@ -307,7 +398,9 @@ class AgentRunsCoordinator:
             "success",
             to_json_object(
                 {
+                    "caseId": case.id,
                     "modelVersion": resolved_model_version,
+                    "agentRuntimeConfig": agent_runtime_config,
                     "promptVersion": prompt_version,
                     "minRounds": self.runtime_config.default_agent_min_rounds,
                     "maxRounds": normalized_config["maxRounds"],
@@ -319,10 +412,54 @@ class AgentRunsCoordinator:
         self.uow.commit()
         return run
 
+    def _create_implicit_case_with_jd(self, *, jd_text: str, timestamp: datetime) -> CaseRecord:
+        case_id = new_id("case")
+        title = derive_agent_case_title(jd_text, timestamp=timestamp)
+        case = self.uow.cases.save(
+            CaseRecord(
+                id=case_id,
+                title=title,
+                owner_team_id=IMPLICIT_AGENT_CASE_OWNER_TEAM_ID,
+                status="searchable",
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        )
+        jd_version = JDVersionRecord(
+            id=new_id("jdv"),
+            case_id=case_id,
+            version_no=1,
+            raw_text=jd_text,
+            source=IMPLICIT_AGENT_JD_SOURCE,
+            is_active=True,
+            created_at=timestamp,
+        )
+        self.uow.plans.deactivate_versions(case_id)
+        self.uow.plans.save_jd_version(jd_version)
+        self._audit(
+            "system",
+            "case",
+            case_id,
+            "case.created",
+            "success",
+            to_json_object({"title": title, "source": "agent_run"}),
+        )
+        self._audit(
+            "system",
+            "jd_version",
+            jd_version.id,
+            "jd_version.created",
+            "success",
+            to_json_object({"caseId": case_id, "source": IMPLICIT_AGENT_JD_SOURCE}),
+        )
+        return case
+
     def list_runs(self) -> list[AgentRunRecord]:
         return self.uow.agent_runs.list_runs()
 
     def get_run(self, run_id: str) -> AgentRunRecord:
+        if not AGENT_RUN_ID_PATTERN.fullmatch(run_id):
+            raise NotFoundError("AGENT_RUN_NOT_FOUND", f"Agent run {run_id} not found.")
         run = self.uow.agent_runs.get_run(run_id)
         if run is None:
             raise NotFoundError("AGENT_RUN_NOT_FOUND", f"Agent run {run_id} not found.")

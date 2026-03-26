@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from cvm_platform.application.agent_runs import effective_agent_runtime_config
 from cvm_platform.application.agent_tracing import NoOpAgentRunTracer
 
 
@@ -12,6 +13,10 @@ def test_noop_agent_run_tracer_supports_nested_updates() -> None:
         sourcing_preference_text="Prefer evals",
         model_version="gpt-5.4-mini",
         prompt_version="agent-loop-v1",
+        agent_runtime_config=effective_agent_runtime_config(
+            None,
+            fallback_model_version="gpt-5.4-mini",
+        ),
     ) as handle:
         assert handle.trace_id is None
         assert handle.trace_url is None

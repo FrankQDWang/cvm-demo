@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from cvm_platform.domain.types import (
     AgentRunConfigPayload,
+    AgentRuntimeConfigPayload,
     AgentRunStepPayload,
     AgentShortlistCandidatePayload,
     EvalSummaryMetricsPayload,
@@ -45,6 +46,7 @@ class AgentRunModel(Base):
     __table_args__ = (UniqueConstraint("idempotency_key"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    case_id: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     jd_text: Mapped[str] = mapped_column(Text)
     sourcing_preference_text: Mapped[str] = mapped_column(Text)
@@ -53,6 +55,7 @@ class AgentRunModel(Base):
     current_round: Mapped[int] = mapped_column(Integer, default=0)
     model_version: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[str] = mapped_column(String(64))
+    agent_runtime_config: Mapped[AgentRuntimeConfigPayload | None] = mapped_column(JSON, nullable=True)
     workflow_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     temporal_namespace: Mapped[str | None] = mapped_column(String(64), nullable=True)
     temporal_task_queue: Mapped[str | None] = mapped_column(String(128), nullable=True)

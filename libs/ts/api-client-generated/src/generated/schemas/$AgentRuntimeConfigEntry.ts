@@ -2,19 +2,15 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export const $CreateAgentRunRequest = {
+export const $AgentRuntimeConfigEntry = {
     properties: {
-        jdText: {
+        modelVersion: {
             type: 'string',
             isRequired: true,
-            minLength: 1,
-            pattern: '^[^\\x00]*$',
         },
-        sourcingPreferenceText: {
-            type: 'string',
+        thinkingEffort: {
+            type: 'Enum',
             isRequired: true,
-            minLength: 1,
-            pattern: '^[^\\x00]*$',
         },
     },
 } as const;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from cvm_platform.application.agent_runs import effective_agent_runtime_config
 from cvm_platform.infrastructure.agent_tracing import LangfuseAgentRunTracer, build_agent_run_tracer
 from cvm_platform.settings.config import Settings
 
@@ -87,6 +88,10 @@ def test_build_agent_run_tracer_returns_noop_without_keys(monkeypatch) -> None:
         sourcing_preference_text="pref",
         model_version="deterministic",
         prompt_version="agent-loop-v1",
+        agent_runtime_config=effective_agent_runtime_config(
+            None,
+            fallback_model_version="deterministic",
+        ),
     ) as handle:
         assert handle.trace_id is None
         assert handle.trace_url is None
@@ -113,6 +118,14 @@ def test_langfuse_agent_run_tracer_records_root_and_nested_observations(monkeypa
         sourcing_preference_text="Prefer agent experience",
         model_version="gpt-5.4-mini",
         prompt_version="agent-loop-v1",
+        agent_runtime_config=effective_agent_runtime_config(
+            {
+                "strategyExtractor": {"modelVersion": "gpt-5.4-mini", "thinkingEffort": "low"},
+                "resumeMatcher": {"modelVersion": "gpt-5.4-mini", "thinkingEffort": "low"},
+                "searchReflector": {"modelVersion": "gpt-5.4", "thinkingEffort": "medium"},
+            },
+            fallback_model_version="gpt-5.4-mini",
+        ),
     ) as handle:
         assert handle.trace_id == "trace-agent_2"
         assert handle.trace_url == "http://127.0.0.1:4202/project/project_123/traces/trace-agent_2"
@@ -143,6 +156,7 @@ def test_langfuse_agent_run_tracer_records_root_and_nested_observations(monkeypa
     assert len(fake_client.observations) == 1
     root_observation = fake_client.observations[0]
     assert root_observation.name == "agent-run"
+    assert root_observation.metadata["agentRuntimeConfig"]["searchReflector"]["modelVersion"] == "gpt-5.4"
     assert root_observation.updates[-1]["output"] == {"status": "completed"}
     assert len(root_observation.children) == 1
     round_observation = root_observation.children[0]
