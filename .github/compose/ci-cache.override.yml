@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache/api
+      cache_to:
+        - type=local,dest=/tmp/.buildx-cache-new/api,mode=max
+
+  worker:
+    build:
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache/worker
+      cache_to:
+        - type=local,dest=/tmp/.buildx-cache-new/worker,mode=max
+
+  web-user:
+    build:
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache/web-user
+      cache_to:
+        - type=local,dest=/tmp/.buildx-cache-new/web-user,mode=max
+
+  web-ops:
+    build:
+      cache_from:
+        - type=local,src=/tmp/.buildx-cache/web-ops
+      cache_to:
+        - type=local,dest=/tmp/.buildx-cache-new/web-ops,mode=max

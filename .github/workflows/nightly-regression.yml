@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
+      COMPOSE_FILE: docker-compose.yml:.github/compose/ci-cache.override.yml
       COMPOSE_PROJECT_NAME: cvm-nightly-${{ github.run_id }}
       CVM_POSTGRES_PORT: "25432"
       CVM_API_PORT: "28010"
@@ -28,11 +29,26 @@ jobs:
       CVM_AGENT_PROFILE: "deterministic"
       CVM_AGENT_MODEL: "gpt-5.4-mini"
       CVM_EXTERNAL_STACK: "1"
+      DOCKER_BUILDKIT: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-ci-env
         with:
           python-version: "3.12"
+      - uses: docker/setup-buildx-action@v3
+      - name: Restore Docker build cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('docker-compose.yml', '.github/compose/ci-cache.override.yml', 'infra/docker/**', '.dockerignore', 'uv.lock', 'pnpm-lock.yaml', 'mise.toml', 'pyproject.toml', 'package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+      - name: Prepare Docker build cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/.buildx-cache-new
+          mkdir -p /tmp/.buildx-cache
       - name: Resolve stack host
         run: |
           set -euo pipefail
@@ -74,3 +90,18 @@ jobs:
       - name: Tear down stack
         if: always()
         run: docker compose down --remove-orphans
+      - name: Finalize Docker build cache
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d /tmp/.buildx-cache-new ]; then
+            mkdir -p /tmp/.buildx-cache
+            for service_cache in /tmp/.buildx-cache-new/*; do
+              [ -e "$service_cache" ] || continue
+              target_dir="/tmp/.buildx-cache/$(basename "$service_cache")"
+              rm -rf "$target_dir"
+              mv "$service_cache" "$target_dir"
+            done
+            rmdir /tmp/.buildx-cache-new 2>/dev/null || true
+          fi

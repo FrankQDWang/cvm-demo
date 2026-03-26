@@ -33,6 +33,31 @@ runs:
       with:
         version: ${{ inputs.uv-version }}
         python-version: ${{ inputs.python-version }}
+    - name: Cache uv downloads
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-${{ inputs.python-version }}-
+    - name: Cache mise toolchain
+      if: ${{ inputs.install-node == 'true' || inputs.install-node-dependencies == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/mise
+          ~/.local/share/mise
+        key: ${{ runner.os }}-mise-${{ hashFiles('mise.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-mise-
+    - name: Cache pnpm store
+      if: ${{ inputs.install-node-dependencies == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/share/pnpm/store
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml', 'mise.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-
     - name: Install mise
       if: ${{ inputs.install-node == 'true' || inputs.install-node-dependencies == 'true' }}
       shell: bash
@@ -54,6 +79,7 @@ runs:
         mise exec -- node --version
         mise exec -- corepack enable
         mise exec -- corepack install
+        mise exec -- pnpm config set store-dir "$HOME/.local/share/pnpm/store"
         mise exec -- pnpm --version
     - name: Sync Python workspace
       if: ${{ inputs.sync-python-workspace == 'true' }}
