@@ -121,8 +121,9 @@ describe('ShortlistPageComponent', () => {
 
     await component.startRun();
 
-    const row = component.shortlist[0]!;
     expect(component.shortlist.length).toBe(1);
+    const row = component.shortlist[0];
+    expect(row).toBeDefined();
     expect(row.candidate.candidateId).toBe('cand_1');
     expect(component.statusLine).toContain('返回 1 份简历');
   });
@@ -131,14 +132,15 @@ describe('ShortlistPageComponent', () => {
     const fixture = TestBed.createComponent(ShortlistPageComponent);
     const component = fixture.componentInstance;
     component.shortlist = [{ rank: 1, candidate }];
-    const row = component.shortlist[0]!;
+    const row = component.shortlist[0];
+    expect(row).toBeDefined();
     api.getCaseCandidate.and.resolveTo(candidateDetail);
 
     await component.toggleResume(row);
     await component.toggleResume(row);
     await component.toggleResume(row);
 
-    expect(api.getCaseCandidate).toHaveBeenCalledTimes(1);
+    expect(api.getCaseCandidate.calls.count()).toBe(1);
     expect(component.resumeDetailState(row).status).toBe('loaded');
     expect(component.resumeProjection(row)?.projectNames).toEqual(['BPM Platform']);
   });
@@ -147,7 +149,8 @@ describe('ShortlistPageComponent', () => {
     const fixture = TestBed.createComponent(ShortlistPageComponent);
     const component = fixture.componentInstance;
     component.shortlist = [{ rank: 1, candidate }];
-    const row = component.shortlist[0]!;
+    const row = component.shortlist[0];
+    expect(row).toBeDefined();
     api.getCaseCandidate.and.returnValue(Promise.reject(new Error('candidate detail failed')));
 
     await component.toggleResume(row);

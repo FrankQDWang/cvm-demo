@@ -13,6 +13,7 @@ from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 from temporalio.common import RetryPolicy
 from temporalio.workflow import ActivityConfig
 
@@ -83,7 +84,7 @@ class ResolvedAgentInvocation:
     model: str | None
     model_version: str
     thinking_effort: AgentThinkingEffort | None
-    model_settings: dict[str, object] | None
+    model_settings: ModelSettings | None
 
 
 def build_strategy_prompt(
@@ -196,11 +197,11 @@ def resolve_agent_invocation(
     provider_prefix = "openai-responses" if thinking_effort not in (None, "none") else "openai"
     resolved_model = f"{provider_prefix}:{model_version}"
     if thinking_effort == "none":
-        model_settings: dict[str, object] | None = {"thinking": False}
+        model_settings: ModelSettings | None = cast(ModelSettings, cast(object, {"thinking": False}))
     elif thinking_effort is None:
         model_settings = None
     else:
-        model_settings = {"thinking": thinking_effort}
+        model_settings = cast(ModelSettings, cast(object, {"thinking": thinking_effort}))
     return ResolvedAgentInvocation(
         model=resolved_model,
         model_version=resolved_model,

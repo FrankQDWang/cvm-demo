@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from cvm_platform.domain.types import AgentThinkingEffort
+
+AgentThinkingEffortSetting = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
 
 
 AGENT_THINKING_FIELDS = (
@@ -38,10 +40,10 @@ class Settings(BaseSettings):
     agent_model_strategy_extractor: str | None = None
     agent_model_resume_matcher: str | None = None
     agent_model_search_reflector: str | None = None
-    agent_thinking: AgentThinkingEffort | None = None
-    agent_thinking_strategy_extractor: AgentThinkingEffort | None = None
-    agent_thinking_resume_matcher: AgentThinkingEffort | None = None
-    agent_thinking_search_reflector: AgentThinkingEffort | None = None
+    agent_thinking: AgentThinkingEffortSetting | None = None
+    agent_thinking_strategy_extractor: AgentThinkingEffortSetting | None = None
+    agent_thinking_resume_matcher: AgentThinkingEffortSetting | None = None
+    agent_thinking_search_reflector: AgentThinkingEffortSetting | None = None
     agent_model_timeout_seconds: int = 30
     openai_api_key: str = Field(default="", validation_alias="OPENAI_API_KEY")
     openai_base_url: str = Field(default="", validation_alias="OPENAI_BASE_URL")

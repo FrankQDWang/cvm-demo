@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Protocol
+from typing import Protocol, cast
 
+from pydantic_ai.run import AgentRunResult
 from sqlalchemy.orm import Session
 from temporalio import workflow
 
@@ -339,20 +340,21 @@ async def _execute_agent_run(
             model_settings=strategy_invocation.model_settings,
             output_type=StrategyExtractorOutputModel,
         )
-        strategy = strategy_result.output.to_normalized_strategy(state.run.jdText)
+        strategy_output = strategy_result.output
+        strategy = strategy_output.to_normalized_strategy(state.run.jdText)
         strategy_step = _append_step(
             state,
             round_no=None,
             step_type="strategy",
             title="Extract search strategy",
             status="completed",
-            summary=strategy_result.output.summary,
+            summary=strategy_output.summary,
             payload={
-                "mustRequirements": strategy_result.output.mustRequirements,
-                "coreRequirements": strategy_result.output.coreRequirements,
-                "bonusRequirements": strategy_result.output.bonusRequirements,
-                "excludeSignals": strategy_result.output.excludeSignals,
-                "round1Query": strategy_result.output.round1Query.model_dump(mode="json"),
+                "mustRequirements": strategy_output.mustRequirements,
+                "coreRequirements": strategy_output.coreRequirements,
+                "bonusRequirements": strategy_output.bonusRequirements,
+                "excludeSignals": strategy_output.excludeSignals,
+                "round1Query": strategy_output.round1Query.model_dump(mode="json"),
                 "promptText": strategy_prompt,
                 "modelVersion": strategy_invocation.model_version,
                 "thinkingEffort": strategy_invocation.thinking_effort,
@@ -589,16 +591,17 @@ async def _execute_agent_run(
                 output_type=SearchReflectorOutputModel,
             )
             minimum_round_override_applied = False
-            if not reflection_result.output.continueSearch and round_no < minimum_rounds:
+            reflection_result_output = reflection_result.output
+            if not reflection_result_output.continueSearch and round_no < minimum_rounds:
                 reflection_output = SearchReflectorOutputModel(
                     continueSearch=True,
-                    reason=f"{reflection_result.output.reason}；未达到最少 {minimum_rounds} 轮，系统继续执行下一轮。",
+                    reason=f"{reflection_result_output.reason}；未达到最少 {minimum_rounds} 轮，系统继续执行下一轮。",
                     nextRoundGoal="继续执行直到达到最少轮次，再评估是否提前停止。",
-                    nextRoundQuery=reflection_result.output.nextRoundQuery,
+                    nextRoundQuery=reflection_result_output.nextRoundQuery,
                 )
                 minimum_round_override_applied = True
             else:
-                reflection_output = reflection_result.output
+                reflection_output = reflection_result_output
             next_strategy = reflection_output.to_normalized_strategy(state.run.jdText)
             current_query = strategy_to_query_payload(strategy.to_payload())
             next_query = strategy_to_query_payload(next_strategy.to_payload())
@@ -793,17 +796,19 @@ async def _analyze_round_candidates(
         )
         for candidate in candidates
     ]
-    results = await asyncio.gather(
-        *[
+    tasks: list[Awaitable[AgentRunResult[ResumeMatcherOutputModel]]] = [
+        cast(
+            Awaitable[AgentRunResult[ResumeMatcherOutputModel]],
             agents.resume_matcher.run(
                 prompt,
                 model=invocation.model,
                 model_settings=invocation.model_settings,
                 output_type=ResumeMatcherOutputModel,
-            )
-            for prompt in prompts
-        ]
-    )
+            ),
+        )
+        for prompt in prompts
+    ]
+    results = await asyncio.gather(*tasks)
     analyzed_candidates: list[_AnalyzedCandidate] = []
     for candidate, prompt, result in zip(candidates, prompts, results, strict=True):
         persisted_candidate = persisted_candidates.get(candidate.externalIdentityId)

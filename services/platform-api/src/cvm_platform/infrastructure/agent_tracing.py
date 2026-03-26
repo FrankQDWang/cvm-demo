@@ -14,7 +14,7 @@ from cvm_platform.application.agent_tracing import (
     NoOpAgentRunTracer,
     TraceObservationType,
 )
-from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
+from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue, to_json_object
 from cvm_platform.settings.config import Settings
 
 try:
@@ -214,7 +214,7 @@ class LangfuseAgentRunTracer:
         root_metadata: JsonValue = {
             "modelVersion": model_version,
             "promptVersion": prompt_version,
-            "agentRuntimeConfig": agent_runtime_config,
+            "agentRuntimeConfig": to_json_object(agent_runtime_config),
         }
         with self._client.start_as_current_observation(
             name="agent-run",

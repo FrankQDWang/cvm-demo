@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 import hashlib
 import json
 from typing import Callable, cast
@@ -266,7 +267,7 @@ def _upsert_case_candidate(
     uow: SqlAlchemyPlatformUnitOfWork,
     case_id: str,
     candidate: WorkerCandidateModel,
-    timestamp,
+    timestamp: datetime,
 ) -> CandidateRecord:
     existing = uow.candidates.find_by_case_and_external_identity(case_id, candidate.externalIdentityId)
     if existing is None:
@@ -303,7 +304,7 @@ def _upsert_resume_snapshot(
     uow: SqlAlchemyPlatformUnitOfWork,
     candidate: WorkerCandidateModel,
     candidate_record: CandidateRecord,
-    timestamp,
+    timestamp: datetime,
 ) -> ResumeSnapshotRecord:
     source_hash = _resume_snapshot_source_hash(candidate)
     existing = uow.candidates.find_resume_snapshot_by_source_hash(candidate_record.id, source_hash)

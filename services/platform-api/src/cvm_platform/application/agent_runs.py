@@ -33,6 +33,7 @@ AGENT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 AGENT_RUNTIME_ROLE_KEYS = ("strategyExtractor", "resumeMatcher", "searchReflector")
 IMPLICIT_AGENT_CASE_OWNER_TEAM_ID = "team-system"
 IMPLICIT_AGENT_JD_SOURCE = "agent-run-intake"
+VALID_THINKING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
 
 def _legacy_agent_runtime_config(model_version: str) -> AgentRuntimeConfigPayload:
@@ -43,27 +44,40 @@ def _legacy_agent_runtime_config(model_version: str) -> AgentRuntimeConfigPayloa
     }
 
 
+def _normalize_agent_thinking_effort(value: object) -> AgentThinkingEffort | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized not in VALID_THINKING_EFFORTS:
+        return None
+    return cast(AgentThinkingEffort, normalized)
+
+
+def _runtime_entry(
+    *,
+    model_version: str,
+    thinking_effort: AgentThinkingEffort | None,
+) -> AgentRuntimeConfigEntryPayload:
+    return {
+        "modelVersion": model_version,
+        "thinkingEffort": thinking_effort,
+    }
+
+
 def _coerce_agent_runtime_entry(
     entry: object,
     fallback_model_version: str,
 ) -> AgentRuntimeConfigEntryPayload:
     if not isinstance(entry, dict):
-        return {"modelVersion": fallback_model_version, "thinkingEffort": None}
-    model_version = entry.get("modelVersion")
-    thinking_effort = entry.get("thinkingEffort")
+        return _runtime_entry(model_version=fallback_model_version, thinking_effort=None)
+    entry_dict = cast(dict[str, object], entry)
+    model_version = entry_dict.get("modelVersion")
+    thinking_effort = entry_dict.get("thinkingEffort")
     resolved_model_version = str(model_version).strip() if isinstance(model_version, str) else ""
-    normalized_thinking_effort: AgentThinkingEffort | None
-    if isinstance(thinking_effort, str):
-        normalized_thinking_effort = cast(
-            AgentThinkingEffort | None,
-            thinking_effort.strip().lower() or None,
-        )
-    else:
-        normalized_thinking_effort = None
-    return {
-        "modelVersion": resolved_model_version or fallback_model_version,
-        "thinkingEffort": normalized_thinking_effort,
-    }
+    return _runtime_entry(
+        model_version=resolved_model_version or fallback_model_version,
+        thinking_effort=_normalize_agent_thinking_effort(thinking_effort),
+    )
 
 
 def effective_agent_runtime_config(
@@ -73,10 +87,19 @@ def effective_agent_runtime_config(
 ) -> AgentRuntimeConfigPayload:
     if agent_runtime_config is None:
         return _legacy_agent_runtime_config(fallback_model_version)
-    config = cast(dict[str, object], agent_runtime_config)
     return {
-        role_key: _coerce_agent_runtime_entry(config.get(role_key), fallback_model_version)
-        for role_key in AGENT_RUNTIME_ROLE_KEYS
+        "strategyExtractor": _coerce_agent_runtime_entry(
+            agent_runtime_config.get("strategyExtractor"),
+            fallback_model_version,
+        ),
+        "resumeMatcher": _coerce_agent_runtime_entry(
+            agent_runtime_config.get("resumeMatcher"),
+            fallback_model_version,
+        ),
+        "searchReflector": _coerce_agent_runtime_entry(
+            agent_runtime_config.get("searchReflector"),
+            fallback_model_version,
+        ),
     }
 
 
@@ -86,14 +109,36 @@ def build_agent_runtime_config(
     runtime_config: PlatformRuntimeConfig,
 ) -> AgentRuntimeConfigPayload:
     return {
-        role_key: {
-            "modelVersion": runtime_config.agent_model_overrides.get(role_key, baseline_model_version),
-            "thinkingEffort": runtime_config.agent_thinking_overrides.get(
-                role_key,
-                runtime_config.default_agent_thinking,
+        "strategyExtractor": _runtime_entry(
+            model_version=runtime_config.agent_model_overrides.get("strategyExtractor", baseline_model_version),
+            thinking_effort=cast(
+                AgentThinkingEffort | None,
+                runtime_config.agent_thinking_overrides.get(
+                    "strategyExtractor",
+                    runtime_config.default_agent_thinking,
+                ),
             ),
-        }
-        for role_key in AGENT_RUNTIME_ROLE_KEYS
+        ),
+        "resumeMatcher": _runtime_entry(
+            model_version=runtime_config.agent_model_overrides.get("resumeMatcher", baseline_model_version),
+            thinking_effort=cast(
+                AgentThinkingEffort | None,
+                runtime_config.agent_thinking_overrides.get(
+                    "resumeMatcher",
+                    runtime_config.default_agent_thinking,
+                ),
+            ),
+        ),
+        "searchReflector": _runtime_entry(
+            model_version=runtime_config.agent_model_overrides.get("searchReflector", baseline_model_version),
+            thinking_effort=cast(
+                AgentThinkingEffort | None,
+                runtime_config.agent_thinking_overrides.get(
+                    "searchReflector",
+                    runtime_config.default_agent_thinking,
+                ),
+            ),
+        ),
     }
 
 
