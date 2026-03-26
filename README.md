@@ -41,6 +41,7 @@ make up
 
 ## CI
 
+- GitHub Actions workflows now run on GitHub-hosted runners instead of the previous self-hosted pool.
 - `validate` is the only PR-blocking workflow; the intended required checks remain `validate-static`, `validate-contracts`, `test`, and `test-stack`.
 - `test-stack` and `nightly-regression` pin stack-backed jobs to `CVM_RESUME_SOURCE_MODE=mock` and `CVM_AGENT_PROFILE=deterministic`, so CI does not depend on live CTS or OpenAI behavior.
 - `nightly-regression` runs the stack-backed `make eval-critical` gate and `make temporal-visibility-smoke`.

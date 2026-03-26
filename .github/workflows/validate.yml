@@ -15,11 +15,7 @@ concurrency:
 jobs:
   validate-static:
     timeout-minutes: 30
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
     steps:
@@ -34,11 +30,7 @@ jobs:
 
   validate-contracts:
     timeout-minutes: 30
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
     steps:
@@ -53,11 +45,7 @@ jobs:
 
   test:
     timeout-minutes: 20
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
       COMPOSE_PROJECT_NAME: cvm-test-${{ github.run_id }}
@@ -72,11 +60,7 @@ jobs:
 
   test-stack:
     timeout-minutes: 40
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
       COMPOSE_PROJECT_NAME: cvm-validate-${{ github.run_id }}
@@ -136,11 +120,7 @@ jobs:
 
   eval-critical:
     timeout-minutes: 45
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
       COMPOSE_PROJECT_NAME: cvm-eval-${{ github.run_id }}

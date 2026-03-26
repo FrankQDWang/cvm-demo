@@ -15,11 +15,7 @@ concurrency:
 jobs:
   nightly-regression:
     timeout-minutes: 60
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.12"
       COMPOSE_PROJECT_NAME: cvm-nightly-${{ github.run_id }}

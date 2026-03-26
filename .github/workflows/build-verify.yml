@@ -16,11 +16,7 @@ concurrency:
 jobs:
   build-runtime-images:
     timeout-minutes: 45
-    runs-on:
-      - self-hosted
-      - Linux
-      - ARM64
-      - docker-cvm-demo
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Verify runtime Docker images
