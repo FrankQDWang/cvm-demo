@@ -18,9 +18,8 @@ from cvm_platform.settings.config import settings
 logger = logging.getLogger("uvicorn.error")
 
 
-def _ensure_live_agent_runtime() -> None:
-    if settings.agent_profile.lower() == "live" and not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live.")
+def _ensure_allowed_agent_runtime() -> None:
+    settings.assert_runtime_mode_allowed()
 
 
 async def handle_domain_error(_: Request, exc: DomainError) -> JSONResponse:
@@ -67,7 +66,7 @@ async def handle_request_validation_error(_: Request, exc: RequestValidationErro
 
 def create_app(*, initialize_db_on_startup: bool = True) -> FastAPI:
     if initialize_db_on_startup:
-        _ensure_live_agent_runtime()
+        _ensure_allowed_agent_runtime()
         initialize_database()
     application = FastAPI(title=settings.app_name, version=settings.app_version)
     application.add_middleware(

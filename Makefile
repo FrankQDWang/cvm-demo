@@ -106,7 +106,7 @@ validate-contracts:
 
 # 确定性测试：自动拉起隔离 PostgreSQL，并显式覆盖为 deterministic agent profile
 test:
-	CVM_AGENT_PROFILE=deterministic CVM_RESUME_SOURCE_MODE=mock ./tools/ci/with_test_postgres.sh uv run pytest -m 'not stack' --cov --cov-report=term-missing
+	CVM_ALLOW_NON_LIVE_RUNTIME=true CVM_AGENT_PROFILE=deterministic CVM_RESUME_SOURCE_MODE=mock ./tools/ci/with_test_postgres.sh uv run pytest -m 'not stack' --cov --cov-report=term-missing
 
 # 栈集成测试：默认自带 deterministic mock/profile stack；CI 可通过 CVM_EXTERNAL_STACK=1 复用外部已启动栈
 test-stack:

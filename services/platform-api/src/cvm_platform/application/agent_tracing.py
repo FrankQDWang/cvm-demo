@@ -2,12 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
 
 
 TraceObservationType = Literal["agent", "chain", "tool", "span", "generation"]
+TraceObservationLevel = Literal["DEBUG", "DEFAULT", "WARNING", "ERROR"]
+
+
+@dataclass(frozen=True, slots=True)
+class TracePromptReference:
+    name: str
+    label: str | None
+    prompt_text: str
+    prompt_type: Literal["text", "chat"] = "text"
 
 
 class AgentTraceObservation(Protocol):
@@ -20,6 +30,9 @@ class AgentTraceObservation(Protocol):
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> AbstractContextManager["AgentTraceObservation"]: ...
@@ -32,6 +45,9 @@ class AgentTraceObservation(Protocol):
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> None: ...
@@ -50,6 +66,9 @@ class AgentRunTraceHandle(Protocol):
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> AbstractContextManager[AgentTraceObservation]: ...
@@ -88,10 +107,25 @@ class NoOpAgentTraceObservation:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
-        del name, as_type, input, metadata, model, version, level, status_message
+        del (
+            name,
+            as_type,
+            input,
+            metadata,
+            model,
+            version,
+            prompt,
+            usage_details,
+            cost_details,
+            level,
+            status_message,
+        )
         yield NoOpAgentTraceObservation()
 
     def update(
@@ -102,10 +136,13 @@ class NoOpAgentTraceObservation:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> None:
-        del input, output, metadata, model, version, level, status_message
+        del input, output, metadata, model, version, prompt, usage_details, cost_details, level, status_message
 
 
 class NoOpAgentRunTraceHandle:
@@ -122,10 +159,25 @@ class NoOpAgentRunTraceHandle:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
-        del name, as_type, input, metadata, model, version, level, status_message
+        del (
+            name,
+            as_type,
+            input,
+            metadata,
+            model,
+            version,
+            prompt,
+            usage_details,
+            cost_details,
+            level,
+            status_message,
+        )
         yield NoOpAgentTraceObservation()
 
     def update_root(

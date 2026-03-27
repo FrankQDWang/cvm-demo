@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from datetime import datetime
 import hashlib
 import json
 from typing import Callable, cast
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from temporalio import activity
 
@@ -16,6 +17,7 @@ from cvm_platform.application.agent_tracing import (
     AgentRunTraceHandle,
     AgentRunTracer,
     AgentTraceObservation,
+    TracePromptReference,
     TraceObservationType,
 )
 from cvm_platform.application.agent_runs import effective_agent_runtime_config
@@ -32,6 +34,7 @@ from cvm_worker.models import (
     AgentRunSnapshotModel,
     AgentRunStepModel,
     CtsSearchRequestModel,
+    ObservationTraceFactModel,
     PersistCandidateSnapshotsRequestModel,
     PersistCandidateSnapshotsResultModel,
     PersistResumeAnalysesRequestModel,
@@ -66,7 +69,7 @@ def load_agent_run_snapshot_impl(
 ) -> AgentRunSnapshotModel:
     with _session_scope(session_factory) as uow:
         run = _require_run(uow, run_id)
-        return AgentRunSnapshotModel.from_record(run)
+        return AgentRunSnapshotModel.from_record(run).compact_for_workflow()
 
 
 def persist_agent_run_patch_impl(
@@ -107,7 +110,7 @@ def persist_agent_run_patch_impl(
         if previous_status != run.status:
             _audit_status_transition(uow, run, runtime_settings)
         uow.commit()
-        return AgentRunSnapshotModel.from_record(run)
+        return AgentRunSnapshotModel.from_record(run).compact_for_workflow()
 
 
 def cts_search_candidates_impl(
@@ -393,6 +396,72 @@ def _audit_status_transition(
     )
 
 
+def _load_trace_fact(payload: dict[str, object]) -> ObservationTraceFactModel | None:
+    raw_trace = payload.get("trace")
+    if not isinstance(raw_trace, dict):
+        return None
+    try:
+        return ObservationTraceFactModel.model_validate(raw_trace)
+    except ValidationError:
+        return None
+
+
+def _load_analysis_trace_fact(analysis: JsonObject) -> ObservationTraceFactModel | None:
+    raw_trace = analysis.get("trace")
+    if not isinstance(raw_trace, dict):
+        return None
+    try:
+        return ObservationTraceFactModel.model_validate(raw_trace)
+    except ValidationError:
+        return None
+
+
+def _trace_prompt_reference(trace_fact: ObservationTraceFactModel) -> TracePromptReference | None:
+    if trace_fact.prompt is None:
+        return None
+    return TracePromptReference(
+        name=trace_fact.prompt.name,
+        label=trace_fact.prompt.label,
+        prompt_text=trace_fact.prompt.text,
+        prompt_type=trace_fact.prompt.type,
+    )
+
+
+def _start_trace_fact_observation(
+    parent: AgentRunTraceHandle | AgentTraceObservation,
+    *,
+    name: str,
+    trace_fact: ObservationTraceFactModel,
+) -> AbstractContextManager[AgentTraceObservation]:
+    return parent.start_observation(
+        name=name,
+        as_type=cast(TraceObservationType, trace_fact.observationType),
+        input=trace_fact.input,
+        metadata=trace_fact.metadata,
+        model=trace_fact.model,
+        version=trace_fact.version,
+        prompt=_trace_prompt_reference(trace_fact),
+        usage_details=trace_fact.usageDetails,
+        cost_details=trace_fact.costDetails,
+        level=trace_fact.level,
+        status_message=trace_fact.statusMessage,
+    )
+
+
+def _update_trace_fact_observation(
+    observation: AgentTraceObservation,
+    trace_fact: ObservationTraceFactModel,
+) -> None:
+    observation.update(
+        output=trace_fact.output,
+        prompt=_trace_prompt_reference(trace_fact),
+        usage_details=trace_fact.usageDetails,
+        cost_details=trace_fact.costDetails,
+        level=trace_fact.level,
+        status_message=trace_fact.statusMessage,
+    )
+
+
 def _replay_trace(
     run: AgentRunRecord,
     trace_handle: AgentRunTraceHandle,
@@ -405,19 +474,28 @@ def _replay_trace(
     steps = [AgentRunStepModel.from_payload(step) for step in run.steps]
     strategy_step = next((step for step in steps if step.stepType == "strategy" and step.roundNo is None), None)
     if strategy_step is not None:
-        with trace_handle.start_observation(
-            name="extract-search-strategy",
-            as_type="generation",
-            input=to_json_value(strategy_step.payload.get("promptText")),
-            metadata=to_json_object({
-                "summary": strategy_step.summary,
-                "stepType": strategy_step.stepType,
-                "thinkingEffort": strategy_step.payload.get("thinkingEffort"),
-            }),
-            model=cast(str | None, strategy_step.payload.get("modelVersion")),
-            version=cast(str | None, strategy_step.payload.get("promptVersion")),
-        ) as observation:
-            observation.update(output=to_json_object(strategy_step.payload))
+        strategy_trace = _load_trace_fact(strategy_step.payload)
+        if strategy_trace is not None:
+            with _start_trace_fact_observation(
+                trace_handle,
+                name="extract-search-strategy",
+                trace_fact=strategy_trace,
+            ) as observation:
+                _update_trace_fact_observation(observation, strategy_trace)
+        else:
+            with trace_handle.start_observation(
+                name="extract-search-strategy",
+                as_type="generation",
+                input=to_json_value(strategy_step.payload.get("promptText")),
+                metadata=to_json_object({
+                    "summary": strategy_step.summary,
+                    "stepType": strategy_step.stepType,
+                    "thinkingEffort": strategy_step.payload.get("thinkingEffort"),
+                }),
+                model=cast(str | None, strategy_step.payload.get("modelVersion")),
+                version=cast(str | None, strategy_step.payload.get("promptVersion")),
+            ) as observation:
+                observation.update(output=to_json_object(strategy_step.payload))
 
     round_steps: dict[int, list[AgentRunStepModel]] = defaultdict(list)
     for step in steps:
@@ -444,13 +522,22 @@ def _replay_trace(
 
     finalize_step = next((step for step in steps if step.stepType == "finalize"), None)
     if finalize_step is not None:
-        with trace_handle.start_observation(
-            name="finalize",
-            as_type="span",
-            input=to_json_object({"currentRound": run.current_round}),
-            metadata=to_json_object({"summary": finalize_step.summary}),
-        ) as observation:
-            observation.update(output=to_json_object(finalize_step.payload))
+        finalize_trace = _load_trace_fact(finalize_step.payload)
+        if finalize_trace is not None:
+            with _start_trace_fact_observation(
+                trace_handle,
+                name="finalize",
+                trace_fact=finalize_trace,
+            ) as observation:
+                _update_trace_fact_observation(observation, finalize_trace)
+        else:
+            with trace_handle.start_observation(
+                name="finalize",
+                as_type="span",
+                input=to_json_object({"currentRound": run.current_round}),
+                metadata=to_json_object({"summary": finalize_step.summary}),
+            ) as observation:
+                observation.update(output=to_json_object(finalize_step.payload))
 
     root_output = to_json_object({
         "status": run.status,
@@ -487,6 +574,15 @@ def _replay_round_steps(
             _replay_analysis_step(step, round_observation)
             continue
         name, as_type = _step_trace_shape(step.stepType)
+        trace_fact = _load_trace_fact(step.payload)
+        if trace_fact is not None:
+            with _start_trace_fact_observation(
+                round_observation,
+                name=name,
+                trace_fact=trace_fact,
+            ) as observation:
+                _update_trace_fact_observation(observation, trace_fact)
+            continue
         step_input: JsonValue = (
             to_json_value(step.payload.get("promptText"))
             if step.payload.get("promptText") is not None
@@ -516,13 +612,31 @@ def _replay_analysis_step(
     round_observation: AgentTraceObservation,
 ) -> None:
     analyses = cast(list[JsonObject], to_json_value(step.payload.get("analyses", [])))
-    with round_observation.start_observation(
-        name="analysis",
-        as_type="chain",
-        input=to_json_object({"summary": step.summary, "analyzedCount": len(analyses)}),
-        metadata=to_json_object({"title": step.title}),
-    ) as analysis_observation:
+    analysis_trace = _load_trace_fact(step.payload)
+    if analysis_trace is not None:
+        analysis_context = _start_trace_fact_observation(
+            round_observation,
+            name="analysis",
+            trace_fact=analysis_trace,
+        )
+    else:
+        analysis_context = round_observation.start_observation(
+            name="analysis",
+            as_type="chain",
+            input=to_json_object({"summary": step.summary, "analyzedCount": len(analyses)}),
+            metadata=to_json_object({"title": step.title}),
+        )
+    with analysis_context as analysis_observation:
         for analysis in analyses:
+            analysis_trace_fact = _load_analysis_trace_fact(analysis)
+            if analysis_trace_fact is not None:
+                with _start_trace_fact_observation(
+                    analysis_observation,
+                    name=f"analyze-resume-{analysis['candidateId']}",
+                    trace_fact=analysis_trace_fact,
+                ) as observation:
+                    _update_trace_fact_observation(observation, analysis_trace_fact)
+                continue
             with analysis_observation.start_observation(
                 name=f"analyze-resume-{analysis['candidateId']}",
                 as_type="generation",
@@ -536,9 +650,12 @@ def _replay_analysis_step(
                 version=cast(str | None, analysis.get("promptVersion")),
             ) as observation:
                 observation.update(output=analysis)
-        analysis_observation.update(
-            output=to_json_object({"analyzedCount": len(analyses), "analyses": analyses}),
-        )
+        if analysis_trace is not None:
+            _update_trace_fact_observation(analysis_observation, analysis_trace)
+        else:
+            analysis_observation.update(
+                output=to_json_object({"analyzedCount": len(analyses), "analyses": analyses}),
+            )
 
 
 def _step_trace_shape(step_type: str) -> tuple[str, TraceObservationType]:

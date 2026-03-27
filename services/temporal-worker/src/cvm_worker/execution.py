@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
+import logging
 from typing import Protocol, cast
 
 from pydantic_ai.run import AgentRunResult
+from pydantic_ai.usage import RunUsage
 from sqlalchemy.orm import Session
 from temporalio import workflow
 
@@ -21,7 +24,7 @@ from cvm_platform.application.agent_runs import (
 from cvm_platform.application.agent_tracing import AgentRunTracer
 from cvm_platform.domain.ports import ResumeSourcePort
 from cvm_platform.domain.errors import ExternalDependencyError
-from cvm_platform.domain.types import AgentRunConfigPayload
+from cvm_platform.domain.types import AgentRunConfigPayload, JsonObject, JsonValue, to_json_object, to_json_value
 from cvm_platform.settings.config import Settings
 from cvm_worker.activities import (
     cts_search_candidates,
@@ -39,7 +42,10 @@ from cvm_worker.activities import (
 )
 from cvm_worker.agents import (
     AgentBundle,
+    RESUME_MATCH_PROMPT_NAME,
     ResolvedAgentInvocation,
+    SEARCH_REFLECTION_PROMPT_NAME,
+    STRATEGY_PROMPT_NAME,
     build_resume_match_prompt,
     build_search_reflection_prompt,
     build_strategy_prompt,
@@ -51,6 +57,7 @@ from cvm_worker.models import (
     AgentRunStepModel,
     CtsSearchRequestModel,
     NormalizedStrategyModel,
+    ObservationTraceFactModel,
     PersistCandidateSnapshotsRequestModel,
     PersistCandidateSnapshotsResultModel,
     PersistResumeAnalysesRequestModel,
@@ -61,6 +68,7 @@ from cvm_worker.models import (
     SearchReflectorOutputModel,
     ShortlistCandidateModel,
     StrategyExtractorOutputModel,
+    TracePromptReferenceModel,
     TracePublicationModel,
     WorkerCandidateModel,
     WorkerSearchPageModel,
@@ -69,6 +77,7 @@ from cvm_worker.models import (
 SessionFactory = Callable[[], Session]
 ResumeSourceFactory = Callable[[Settings], ResumeSourcePort]
 AgentRunTracerFactory = Callable[[Settings], AgentRunTracer]
+LOGGER = logging.getLogger("cvm_worker.execution")
 
 
 class _ExecutionIO(Protocol):
@@ -121,6 +130,7 @@ class _AnalyzedCandidate:
     thinking_effort: str | None
     evidence: list[str]
     concerns: list[str]
+    trace_fact: ObservationTraceFactModel
 
 
 @dataclass(slots=True)
@@ -132,6 +142,167 @@ class _ExecutionState:
     no_progress_rounds: int = 0
     previous_shortlist_signature: tuple[str, ...] = ()
     stop_reason: str | None = None
+
+
+def _normalize_usage_details(usage: RunUsage) -> dict[str, int] | None:
+    usage_details: dict[str, int] = {
+        "prompt_tokens": usage.input_tokens,
+        "completion_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens,
+    }
+    if usage.cache_write_tokens:
+        usage_details["cache_write_tokens"] = usage.cache_write_tokens
+    if usage.cache_read_tokens:
+        usage_details["cache_read_tokens"] = usage.cache_read_tokens
+    if usage.input_audio_tokens:
+        usage_details["input_audio_tokens"] = usage.input_audio_tokens
+    if usage.cache_audio_read_tokens:
+        usage_details["cache_audio_read_tokens"] = usage.cache_audio_read_tokens
+    if usage.output_audio_tokens:
+        usage_details["output_audio_tokens"] = usage.output_audio_tokens
+    if usage.requests:
+        usage_details["requests"] = usage.requests
+    if usage.tool_calls:
+        usage_details["tool_calls"] = usage.tool_calls
+    for key, value in usage.details.items():
+        if isinstance(value, int):
+            usage_details[key] = value
+    if not any(value > 0 for value in usage_details.values()):
+        return None
+    return usage_details
+
+
+def _parse_message_history(result: AgentRunResult[object]) -> list[JsonValue]:
+    raw_messages = result.all_messages_json()
+    loaded_messages = json.loads(raw_messages.decode("utf-8"))
+    return cast(list[JsonValue], to_json_value(loaded_messages))
+
+
+def _extract_response_message(message_history: list[JsonValue]) -> JsonValue | None:
+    for message in reversed(message_history):
+        if isinstance(message, dict) and message.get("kind") == "response":
+            return cast(JsonValue, message)
+    return None
+
+
+def _generation_input_payload(
+    *,
+    prompt_text: str,
+    message_history: list[JsonValue],
+) -> JsonObject:
+    return to_json_object(
+        {
+            "promptText": prompt_text,
+            "messageHistory": message_history,
+        }
+    )
+
+
+def _generation_output_payload(
+    *,
+    structured_output: JsonObject,
+    response_message: JsonValue | None,
+) -> JsonObject:
+    payload: JsonObject = {"structuredOutput": structured_output}
+    if response_message is not None:
+        payload["response"] = response_message
+    return payload
+
+
+def _build_generation_trace_fact(
+    *,
+    prompt_name: str,
+    prompt_label: str,
+    prompt_text: str,
+    result: AgentRunResult[object],
+    structured_output: JsonObject,
+    model_version: str,
+    thinking_effort: str | None,
+    metadata: JsonObject | None = None,
+) -> ObservationTraceFactModel:
+    message_history = _parse_message_history(result)
+    response_message = _extract_response_message(message_history)
+    trace_metadata = dict(metadata or {})
+    trace_metadata["thinkingEffort"] = thinking_effort
+    trace_metadata["messageCount"] = len(message_history)
+    return ObservationTraceFactModel(
+        observationType="generation",
+        input=_generation_input_payload(prompt_text=prompt_text, message_history=message_history),
+        output=_generation_output_payload(
+            structured_output=structured_output,
+            response_message=response_message,
+        ),
+        metadata=to_json_object(trace_metadata),
+        messageHistory=message_history,
+        response=response_message,
+        model=model_version,
+        version=prompt_label,
+        prompt=TracePromptReferenceModel(
+            name=prompt_name,
+            label=prompt_label,
+            text=prompt_text,
+            type="text",
+        ),
+        usageDetails=_normalize_usage_details(result.usage()),
+        completionStartTime=result.timestamp().isoformat(),
+    )
+
+
+def _build_span_trace_fact(
+    *,
+    input_payload: JsonObject,
+    output_payload: JsonObject,
+    metadata: JsonObject | None = None,
+    level: str | None = None,
+    status_message: str | None = None,
+) -> ObservationTraceFactModel:
+    return ObservationTraceFactModel(
+        observationType="span",
+        input=input_payload,
+        output=output_payload,
+        metadata=to_json_object(metadata or {}),
+        level=cast(object, level),
+        statusMessage=status_message,
+    )
+
+
+def _build_search_trace_fact(
+    *,
+    request: CtsSearchRequestModel,
+    page: WorkerSearchPageModel,
+    offset: int,
+) -> ObservationTraceFactModel:
+    output_payload: JsonObject = {
+        "status": page.status,
+        "pageNo": page.pageNo,
+        "pageSize": page.pageSize,
+        "offset": offset,
+        "total": page.total,
+        "returnedCount": len(page.candidates),
+        "candidateIds": [candidate.externalIdentityId for candidate in page.candidates],
+        "upstreamResponse": to_json_object(page.upstreamResponse),
+    }
+    if page.errorCode is not None:
+        output_payload["errorCode"] = page.errorCode
+    if page.errorMessage is not None:
+        output_payload["errorMessage"] = page.errorMessage
+    return ObservationTraceFactModel(
+        observationType="tool",
+        input=to_json_object(
+            {
+                "searchRequest": request.model_dump(mode="json"),
+                "upstreamRequest": to_json_object(page.upstreamRequest),
+            }
+        ),
+        output=output_payload,
+        metadata=to_json_object({"tool": "cts.search_candidates"}),
+        level="ERROR" if page.errorCode is not None else None,
+        statusMessage=page.errorMessage if page.errorCode is not None else None,
+    )
+
+
+def _trace_payload(trace_fact: ObservationTraceFactModel) -> dict[str, object]:
+    return cast(dict[str, object], cast(object, trace_fact.model_dump(mode="json")))
 
 
 def _max_rounds(config: AgentRunConfigPayload) -> int:
@@ -163,6 +334,70 @@ def _execution_config_payload(
         "roundFetchSchedule": _round_fetch_schedule(run.config),
         "finalTopK": _final_top_k(run.config),
     }
+
+
+async def _publish_trace_quietly(
+    *,
+    io: _ExecutionIO,
+    state: _ExecutionState,
+    run_id: str,
+    terminal_status: str,
+) -> None:
+    try:
+        await io.publish_trace(run_id)
+    except Exception as exc:  # pragma: no cover - exercised by focused failure-path tests
+        warning_message = str(exc) or "Langfuse trace publication failed."
+        LOGGER.warning(
+            "Langfuse trace publication failed for run %s after terminal status %s: %s",
+            run_id,
+            terminal_status,
+            warning_message,
+        )
+        try:
+            warning_step = _append_step(
+                state,
+                round_no=state.run.currentRound or None,
+                step_type="observability-warning",
+                title="Langfuse trace publication failed",
+                status="failed",
+                summary="Langfuse trace publication failed after the run had already reached a terminal state.",
+                payload={
+                    "warningCode": "LANGFUSE_TRACE_PUBLICATION_FAILED",
+                    "terminalStatus": terminal_status,
+                    "errorMessage": warning_message,
+                    "trace": _trace_payload(
+                        _build_span_trace_fact(
+                            input_payload=to_json_object(
+                                {
+                                    "runId": run_id,
+                                    "terminalStatus": terminal_status,
+                                }
+                            ),
+                            output_payload=to_json_object(
+                                {
+                                    "warningCode": "LANGFUSE_TRACE_PUBLICATION_FAILED",
+                                    "errorMessage": warning_message,
+                                }
+                            ),
+                            metadata=to_json_object({"stepType": "observability-warning"}),
+                            level="ERROR",
+                            status_message=warning_message,
+                        )
+                    ),
+                },
+            )
+            state.run = await io.persist_run_patch(
+                RunPersistencePatchModel(
+                    runId=run_id,
+                    appendSteps=[warning_step],
+                )
+            )
+        except Exception as warning_exc:  # pragma: no cover - defensive, should not affect terminal status
+            LOGGER.warning(
+                "Failed to persist observability warning for run %s after Langfuse export failure: %s",
+                run_id,
+                warning_exc,
+            )
 
 
 class _WorkflowExecutionIO:
@@ -342,6 +577,16 @@ async def _execute_agent_run(
         )
         strategy_output = strategy_result.output
         strategy = strategy_output.to_normalized_strategy(state.run.jdText)
+        strategy_trace = _build_generation_trace_fact(
+            prompt_name=STRATEGY_PROMPT_NAME,
+            prompt_label=state.run.promptVersion,
+            prompt_text=strategy_prompt,
+            result=cast(AgentRunResult[object], strategy_result),
+            structured_output=cast(JsonObject, strategy_output.model_dump(mode="json")),
+            model_version=strategy_invocation.model_version,
+            thinking_effort=strategy_invocation.thinking_effort,
+            metadata=to_json_object({"stepType": "strategy", "summary": strategy_output.summary}),
+        )
         strategy_step = _append_step(
             state,
             round_no=None,
@@ -360,6 +605,7 @@ async def _execute_agent_run(
                 "thinkingEffort": strategy_invocation.thinking_effort,
                 "promptVersion": state.run.promptVersion,
                 "executionConfig": _execution_config_payload(runtime_settings, state.run),
+                "trace": _trace_payload(strategy_trace),
             },
         )
         state.run = await io.persist_run_patch(
@@ -380,6 +626,11 @@ async def _execute_agent_run(
             )
             search_page = await io.search_candidates(search_request)
             state.strategy_offsets[strategy_key] = offset + len(search_page.candidates)
+            search_trace = _build_search_trace_fact(
+                request=search_request,
+                page=search_page,
+                offset=offset,
+            )
             search_step = _append_step(
                 state,
                 round_no=round_no,
@@ -396,8 +647,11 @@ async def _execute_agent_run(
                     "total": search_page.total,
                     "returnedCount": len(search_page.candidates),
                     "candidateIds": [candidate.externalIdentityId for candidate in search_page.candidates],
+                    "upstreamRequest": to_json_object(search_page.upstreamRequest),
+                    "upstreamResponse": to_json_object(search_page.upstreamResponse),
                     "errorCode": search_page.errorCode,
                     "errorMessage": search_page.errorMessage,
+                    "trace": _trace_payload(search_trace),
                 },
             )
             state.run = await io.persist_run_patch(
@@ -413,6 +667,22 @@ async def _execute_agent_run(
                 state.run.seenResumeIds,
                 search_page.candidates,
             )
+            dedupe_trace = _build_span_trace_fact(
+                input_payload=to_json_object(
+                    {
+                        "candidateIds": [candidate.externalIdentityId for candidate in search_page.candidates],
+                        "seenResumeCountBefore": len(state.run.seenResumeIds),
+                    }
+                ),
+                output_payload=to_json_object(
+                    {
+                        "admittedResumeIds": [candidate.externalIdentityId for candidate in new_candidates],
+                        "duplicateResumeIds": duplicate_ids,
+                        "seenResumeCount": len(updated_seen_ids),
+                    }
+                ),
+                metadata=to_json_object({"stepType": "dedupe"}),
+            )
             dedupe_step = _append_step(
                 state,
                 round_no=round_no,
@@ -424,6 +694,7 @@ async def _execute_agent_run(
                     "admittedResumeIds": [candidate.externalIdentityId for candidate in new_candidates],
                     "duplicateResumeIds": duplicate_ids,
                     "seenResumeCount": len(updated_seen_ids),
+                    "trace": _trace_payload(dedupe_trace),
                 },
             )
             state.run = await io.persist_run_patch(
@@ -469,11 +740,26 @@ async def _execute_agent_run(
                                 summary=analyzed.shortlisted.reason,
                                 evidence=analyzed.evidence,
                                 concerns=analyzed.concerns,
+                                trace=analyzed.trace_fact,
                             )
                             for analyzed in analyzed_candidates
                         ]
                     )
                 )
+            analysis_trace = _build_span_trace_fact(
+                input_payload=to_json_object(
+                    {"summary": "resume-analysis", "analyzedCount": len(analyzed_candidates)}
+                ),
+                output_payload=to_json_object(
+                    {
+                        "analyzedCount": len(analyzed_candidates),
+                        "candidateIds": [
+                            analyzed.shortlisted.candidate.externalIdentityId for analyzed in analyzed_candidates
+                        ],
+                    }
+                ),
+                metadata=to_json_object({"stepType": "analysis", "title": f"Round {round_no} analysis"}),
+            )
             analysis_step = _append_step(
                 state,
                 round_no=round_no,
@@ -499,15 +785,37 @@ async def _execute_agent_run(
                             "modelVersion": analyzed.model_version,
                             "thinkingEffort": analyzed.thinking_effort,
                             "promptVersion": analyzed.prompt_version,
+                            "trace": _trace_payload(analyzed.trace_fact),
                         }
                         for analyzed in analyzed_candidates
-                    ]
+                    ],
+                    "trace": _trace_payload(analysis_trace),
                 },
             )
+            retained_count_before = len(state.retained_candidates)
             state.retained_candidates = _rank_candidates(
                 retained_candidates=state.retained_candidates,
                 analyzed_candidates=analyzed_candidates,
                 final_top_k=_final_top_k(state.run.config),
+            )
+            shortlist_trace = _build_span_trace_fact(
+                input_payload=to_json_object(
+                    {
+                        "analyzedCandidateIds": [
+                            analyzed.shortlisted.candidate.externalIdentityId for analyzed in analyzed_candidates
+                        ],
+                        "retainedCountBefore": retained_count_before,
+                    }
+                ),
+                output_payload=to_json_object(
+                    {
+                        "retainedCount": len(state.retained_candidates),
+                        "retainedCandidateIds": [
+                            candidate.candidate.externalIdentityId for candidate in state.retained_candidates
+                        ],
+                    }
+                ),
+                metadata=to_json_object({"stepType": "shortlist", "title": f"Round {round_no} shortlist"}),
             )
             shortlist_step = _append_step(
                 state,
@@ -531,6 +839,7 @@ async def _execute_agent_run(
                     "retainedCaseCandidateIds": [
                         candidate.candidate_id for candidate in state.retained_candidates
                     ],
+                    "trace": _trace_payload(shortlist_trace),
                 },
             )
             state.run = await io.persist_run_patch(
@@ -558,6 +867,13 @@ async def _execute_agent_run(
             )
             if should_stop:
                 state.stop_reason = rule_stop_reason
+                stop_trace = _build_span_trace_fact(
+                    input_payload=to_json_object({"roundNo": round_no, "source": "rule"}),
+                    output_payload=to_json_object({"reason": rule_stop_reason, "source": "rule"}),
+                    metadata=to_json_object({"stepType": "stop"}),
+                    level="WARNING",
+                    status_message=rule_stop_reason,
+                )
                 stop_step = _append_step(
                     state,
                     round_no=round_no,
@@ -565,7 +881,11 @@ async def _execute_agent_run(
                     title=f"Round {round_no} stop",
                     status="completed",
                     summary=rule_stop_reason,
-                    payload={"reason": rule_stop_reason, "source": "rule"},
+                    payload={
+                        "reason": rule_stop_reason,
+                        "source": "rule",
+                        "trace": _trace_payload(stop_trace),
+                    },
                 )
                 state.run = await io.persist_run_patch(
                     RunPersistencePatchModel(runId=run_id, appendSteps=[stop_step])
@@ -605,6 +925,22 @@ async def _execute_agent_run(
             next_strategy = reflection_output.to_normalized_strategy(state.run.jdText)
             current_query = strategy_to_query_payload(strategy.to_payload())
             next_query = strategy_to_query_payload(next_strategy.to_payload())
+            reflection_trace = _build_generation_trace_fact(
+                prompt_name=SEARCH_REFLECTION_PROMPT_NAME,
+                prompt_label=state.run.promptVersion,
+                prompt_text=reflection_prompt,
+                result=cast(AgentRunResult[object], reflection_result),
+                structured_output=cast(JsonObject, reflection_output.model_dump(mode="json")),
+                model_version=reflection_invocation.model_version,
+                thinking_effort=reflection_invocation.thinking_effort,
+                metadata=to_json_object(
+                    {
+                        "stepType": "reflection",
+                        "summary": reflection_output.reason,
+                        "minimumRoundsOverrideApplied": minimum_round_override_applied,
+                    }
+                ),
+            )
             reflection_step = _append_step(
                 state,
                 round_no=round_no,
@@ -624,6 +960,7 @@ async def _execute_agent_run(
                     "thinkingEffort": reflection_invocation.thinking_effort,
                     "promptVersion": state.run.promptVersion,
                     "executionConfig": _execution_config_payload(runtime_settings, state.run),
+                    "trace": _trace_payload(reflection_trace),
                 },
             )
             state.run = await io.persist_run_patch(
@@ -631,6 +968,13 @@ async def _execute_agent_run(
             )
             if not reflection_output.continueSearch:
                 state.stop_reason = reflection_output.reason
+                stop_trace = _build_span_trace_fact(
+                    input_payload=to_json_object({"roundNo": round_no, "source": "reflection"}),
+                    output_payload=to_json_object({"reason": reflection_output.reason, "source": "reflection"}),
+                    metadata=to_json_object({"stepType": "stop"}),
+                    level="WARNING",
+                    status_message=reflection_output.reason,
+                )
                 stop_step = _append_step(
                     state,
                     round_no=round_no,
@@ -638,7 +982,11 @@ async def _execute_agent_run(
                     title=f"Round {round_no} stop",
                     status="completed",
                     summary=reflection_output.reason,
-                    payload={"reason": reflection_output.reason, "source": "reflection"},
+                    payload={
+                        "reason": reflection_output.reason,
+                        "source": "reflection",
+                        "trace": _trace_payload(stop_trace),
+                    },
                 )
                 state.run = await io.persist_run_patch(
                     RunPersistencePatchModel(runId=run_id, appendSteps=[stop_step])
@@ -650,6 +998,19 @@ async def _execute_agent_run(
                 and state.no_progress_rounds >= 1
             ):
                 state.stop_reason = "下一轮查询与上一轮实质相同且没有新增价值，系统停止继续检索。"
+                duplicate_stop_trace = _build_span_trace_fact(
+                    input_payload=to_json_object({"roundNo": round_no, "source": "duplicate-strategy"}),
+                    output_payload=to_json_object(
+                        {
+                            "reason": state.stop_reason,
+                            "source": "duplicate-strategy",
+                            "duplicateStrategy": next_query,
+                        }
+                    ),
+                    metadata=to_json_object({"stepType": "stop"}),
+                    level="WARNING",
+                    status_message=state.stop_reason,
+                )
                 stop_step = _append_step(
                     state,
                     round_no=round_no,
@@ -661,6 +1022,7 @@ async def _execute_agent_run(
                         "reason": state.stop_reason,
                         "source": "duplicate-strategy",
                         "duplicateStrategy": next_query,
+                        "trace": _trace_payload(duplicate_stop_trace),
                     },
                 )
                 state.run = await io.persist_run_patch(
@@ -669,6 +1031,16 @@ async def _execute_agent_run(
                 break
             strategy = next_strategy
 
+        finalize_trace = _build_span_trace_fact(
+            input_payload=to_json_object({"currentRound": state.run.currentRound or None}),
+            output_payload=to_json_object(
+                {
+                    "finalShortlist": [candidate.to_model().model_dump(mode="json") for candidate in state.retained_candidates],
+                    "stopReason": state.stop_reason,
+                }
+            ),
+            metadata=to_json_object({"stepType": "finalize"}),
+        )
         finalize_step = _append_step(
             state,
             round_no=state.run.currentRound or None,
@@ -680,6 +1052,7 @@ async def _execute_agent_run(
                 "finalShortlist": [candidate.to_model().model_dump(mode="json") for candidate in state.retained_candidates],
                 "stopReason": state.stop_reason,
                 "executionConfig": _execution_config_payload(runtime_settings, state.run),
+                "trace": _trace_payload(finalize_trace),
             },
         )
         state.run = await io.persist_run_patch(
@@ -691,12 +1064,17 @@ async def _execute_agent_run(
                 markFinished=True,
             )
         )
-        await io.publish_trace(run_id)
+        await _publish_trace_quietly(
+            io=io,
+            state=state,
+            run_id=run_id,
+            terminal_status="completed",
+        )
         return "completed"
     except Exception as exc:
         error_code = getattr(exc, "code", "AGENT_RUN_FAILED")
         error_message = getattr(exc, "message", str(exc))
-        await io.persist_run_patch(
+        state.run = await io.persist_run_patch(
             RunPersistencePatchModel(
                 runId=run_id,
                 status="failed",
@@ -705,7 +1083,12 @@ async def _execute_agent_run(
                 markFinished=True,
             )
         )
-        await io.publish_trace(run_id)
+        await _publish_trace_quietly(
+            io=io,
+            state=state,
+            run_id=run_id,
+            terminal_status="failed",
+        )
         return "failed"
 
 
@@ -729,7 +1112,7 @@ def _append_step(
         payload=payload,
     )
     step = AgentRunStepModel.from_payload(step_payload)
-    state.run.steps.append(step)
+    state.run.steps.append(step.compact_for_workflow())
     return step
 
 
@@ -817,6 +1200,22 @@ async def _analyze_round_candidates(
                 f"Persisted candidate reference missing for {candidate.externalIdentityId}."
             )
         output = result.output
+        trace_fact = _build_generation_trace_fact(
+            prompt_name=RESUME_MATCH_PROMPT_NAME,
+            prompt_label=run.promptVersion,
+            prompt_text=prompt,
+            result=cast(AgentRunResult[object], result),
+            structured_output=cast(JsonObject, output.model_dump(mode="json")),
+            model_version=invocation.model_version,
+            thinking_effort=invocation.thinking_effort,
+            metadata=to_json_object(
+                {
+                    "candidateId": persisted_candidate.candidateId,
+                    "externalIdentityId": candidate.externalIdentityId,
+                    "candidateName": candidate.name,
+                }
+            ),
+        )
         analyzed_candidates.append(
             _AnalyzedCandidate(
                 shortlisted=_ShortlistedCandidate(
@@ -833,6 +1232,7 @@ async def _analyze_round_candidates(
                 thinking_effort=invocation.thinking_effort,
                 evidence=list(output.evidence),
                 concerns=list(output.concerns),
+                trace_fact=trace_fact,
             )
         )
     return analyzed_candidates

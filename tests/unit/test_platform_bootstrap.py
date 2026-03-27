@@ -108,6 +108,7 @@ def test_build_platform_service_wires_runtime_and_uow(monkeypatch) -> None:
 
 def test_settings_default_agent_runtime_is_live(monkeypatch) -> None:
     monkeypatch.delenv("CVM_AGENT_PROFILE", raising=False)
+    monkeypatch.delenv("CVM_ALLOW_NON_LIVE_RUNTIME", raising=False)
     monkeypatch.delenv("CVM_AGENT_MIN_ROUNDS", raising=False)
     monkeypatch.delenv("CVM_AGENT_MAX_ROUNDS", raising=False)
     monkeypatch.delenv("CVM_AGENT_ROUND_FETCH_SCHEDULE", raising=False)
@@ -118,10 +119,13 @@ def test_settings_default_agent_runtime_is_live(monkeypatch) -> None:
     monkeypatch.delenv("CVM_AGENT_THINKING_STRATEGY_EXTRACTOR", raising=False)
     monkeypatch.delenv("CVM_AGENT_THINKING_RESUME_MATCHER", raising=False)
     monkeypatch.delenv("CVM_AGENT_THINKING_SEARCH_REFLECTOR", raising=False)
+    monkeypatch.delenv("CVM_RESUME_SOURCE_MODE", raising=False)
 
     settings = Settings(_env_file=None)
 
     assert settings.agent_profile == "live"
+    assert settings.resume_source_mode == "cts"
+    assert settings.allow_non_live_runtime is False
     assert settings.agent_min_rounds == 3
     assert settings.agent_max_rounds == 5
     assert settings.agent_round_fetch_schedule == "10,5,5"
@@ -197,6 +201,11 @@ def test_settings_reject_invalid_agent_profile() -> None:
         Settings(_env_file=None, agent_profile="batch")
 
 
+def test_settings_reject_invalid_resume_source_mode() -> None:
+    with pytest.raises(ValueError, match="CVM_RESUME_SOURCE_MODE"):
+        Settings(_env_file=None, resume_source_mode="csv")
+
+
 def test_settings_reject_invalid_agent_round_window() -> None:
     with pytest.raises(ValueError, match="CVM_AGENT_MIN_ROUNDS"):
         Settings(_env_file=None, agent_profile="deterministic", agent_min_rounds=4, agent_max_rounds=3)
@@ -204,9 +213,30 @@ def test_settings_reject_invalid_agent_round_window() -> None:
 
 def test_create_app_requires_openai_api_key_for_live_startup(monkeypatch) -> None:
     monkeypatch.setattr(platform_main.settings, "agent_profile", "live")
+    monkeypatch.setattr(platform_main.settings, "resume_source_mode", "cts")
+    monkeypatch.setattr(platform_main.settings, "allow_non_live_runtime", False)
     monkeypatch.setattr(platform_main.settings, "openai_api_key", "")
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live"):
+        platform_main.create_app()
+
+
+def test_create_app_rejects_non_live_runtime_without_escape_hatch(monkeypatch) -> None:
+    monkeypatch.setattr(platform_main.settings, "agent_profile", "deterministic")
+    monkeypatch.setattr(platform_main.settings, "resume_source_mode", "mock")
+    monkeypatch.setattr(platform_main.settings, "allow_non_live_runtime", False)
+
+    with pytest.raises(RuntimeError, match="Non-live runtime is disabled"):
+        platform_main.create_app()
+
+
+def test_create_app_rejects_mixed_runtime_even_with_escape_hatch(monkeypatch) -> None:
+    monkeypatch.setattr(platform_main.settings, "agent_profile", "live")
+    monkeypatch.setattr(platform_main.settings, "resume_source_mode", "mock")
+    monkeypatch.setattr(platform_main.settings, "allow_non_live_runtime", True)
+    monkeypatch.setattr(platform_main.settings, "openai_api_key", "test-key")
+
+    with pytest.raises(RuntimeError, match="only permits"):
         platform_main.create_app()
 
 

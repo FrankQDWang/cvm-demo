@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -221,6 +222,34 @@ class PersistedCandidateRefModel(BaseModel):
     resumeSnapshotId: str
 
 
+class TracePromptReferenceModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    name: str = Field(min_length=1)
+    label: str | None = None
+    text: str = Field(min_length=1)
+    type: Literal["text", "chat"] = "text"
+
+
+class ObservationTraceFactModel(BaseModel):
+    model_config = STRICT_MODEL_CONFIG
+
+    observationType: Literal["generation", "tool", "span"]
+    input: object | None = None
+    output: object | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    messageHistory: list[object] = Field(default_factory=list)
+    response: object | None = None
+    model: str | None = None
+    version: str | None = None
+    prompt: TracePromptReferenceModel | None = None
+    usageDetails: dict[str, int] | None = None
+    costDetails: dict[str, float] | None = None
+    completionStartTime: str | None = None
+    level: Literal["DEBUG", "DEFAULT", "WARNING", "ERROR"] | None = None
+    statusMessage: str | None = None
+
+
 class PersistCandidateSnapshotsRequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -245,6 +274,7 @@ class PersistResumeAnalysisItemModel(BaseModel):
     summary: str
     evidence: list[str] = Field(default_factory=list)
     concerns: list[str] = Field(default_factory=list)
+    trace: ObservationTraceFactModel | None = None
 
 
 class PersistResumeAnalysesRequestModel(BaseModel):
@@ -289,6 +319,12 @@ class AgentRunStepModel(BaseModel):
             "payload": to_json_object(self.payload),
             "occurredAt": self.occurredAt,
         }
+
+    def compact_for_workflow(self) -> "AgentRunStepModel":
+        return self.model_copy(
+            update={"payload": _compact_step_payload(self.stepType, self.payload)},
+            deep=True,
+        )
 
 
 class ShortlistCandidateModel(BaseModel):
@@ -396,6 +432,12 @@ class AgentRunSnapshotModel(BaseModel):
             errorMessage=run.error_message,
         )
 
+    def compact_for_workflow(self) -> "AgentRunSnapshotModel":
+        return self.model_copy(
+            update={"steps": [step.compact_for_workflow() for step in self.steps]},
+            deep=True,
+        )
+
 
 class RunPersistencePatchModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -427,3 +469,112 @@ class TracePublicationModel(BaseModel):
 
     traceId: str | None = None
     traceUrl: str | None = None
+
+
+def _compact_step_payload(step_type: str, payload: dict[str, object]) -> dict[str, object]:
+    if step_type == "strategy":
+        return _copy_selected_keys(
+            payload,
+            "mustRequirements",
+            "coreRequirements",
+            "bonusRequirements",
+            "excludeSignals",
+            "round1Query",
+            "modelVersion",
+            "thinkingEffort",
+            "promptVersion",
+            "executionConfig",
+        )
+    if step_type == "search":
+        return _copy_selected_keys(
+            payload,
+            "roundQuery",
+            "normalizedQuery",
+            "pageNo",
+            "pageSize",
+            "offset",
+            "total",
+            "returnedCount",
+            "candidateIds",
+            "errorCode",
+            "errorMessage",
+        )
+    if step_type == "dedupe":
+        return _copy_selected_keys(
+            payload,
+            "admittedResumeIds",
+            "duplicateResumeIds",
+            "seenResumeCount",
+        )
+    if step_type == "analysis":
+        compact_payload: dict[str, object] = {}
+        analyses = payload.get("analyses", [])
+        if isinstance(analyses, list):
+            compact_payload["analyses"] = [
+                _compact_analysis_entry(item)
+                for item in analyses
+                if isinstance(item, dict)
+            ]
+        return compact_payload
+    if step_type == "shortlist":
+        return _copy_selected_keys(
+            payload,
+            "retainedCount",
+            "retainedCandidates",
+            "analyzedCandidateIds",
+            "analyzedCaseCandidateIds",
+            "retainedCandidateIds",
+            "retainedCaseCandidateIds",
+        )
+    if step_type == "reflection":
+        return _copy_selected_keys(
+            payload,
+            "continueSearch",
+            "reason",
+            "nextRoundGoal",
+            "nextRoundQuery",
+            "queryDelta",
+            "minimumRoundsOverrideApplied",
+            "modelVersion",
+            "thinkingEffort",
+            "promptVersion",
+            "executionConfig",
+        )
+    if step_type == "stop":
+        return _copy_selected_keys(
+            payload,
+            "reason",
+            "source",
+            "duplicateStrategy",
+        )
+    if step_type == "finalize":
+        return _copy_selected_keys(payload, "finalShortlist", "stopReason", "executionConfig")
+    if step_type == "observability-warning":
+        return _copy_selected_keys(payload, "warningCode", "terminalStatus", "errorMessage")
+    return _copy_selected_keys(payload)
+
+
+def _compact_analysis_entry(entry: dict[str, object]) -> dict[str, object]:
+    return _copy_selected_keys(
+        entry,
+        "candidateId",
+        "externalIdentityId",
+        "name",
+        "score",
+        "reason",
+        "evidence",
+        "concerns",
+        "modelVersion",
+        "thinkingEffort",
+        "promptVersion",
+    )
+
+
+def _copy_selected_keys(payload: dict[str, object], *keys: str) -> dict[str, object]:
+    if not keys:
+        return {}
+    compacted: dict[str, object] = {}
+    for key in keys:
+        if key in payload:
+            compacted[key] = deepcopy(payload[key])
+    return compacted

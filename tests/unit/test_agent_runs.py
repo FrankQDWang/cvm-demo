@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+from pydantic_ai.usage import RunUsage
 
 from cvm_platform.application.agent_runs import (
     AgentRunsCoordinator,
@@ -26,6 +27,7 @@ from cvm_platform.settings.config import Settings
 from cvm_worker.execution import _execute_agent_run
 from cvm_worker.models import (
     AgentRunSnapshotModel,
+    AgentRunStepModel,
     AgentRuntimeConfigModel,
     CtsSearchRequestModel,
     PersistCandidateSnapshotsRequestModel,
@@ -178,6 +180,14 @@ class _QueuedAgent:
     def __post_init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
+    @staticmethod
+    def _output_payload(output: object) -> dict[str, object]:
+        if hasattr(output, "model_dump"):
+            return output.model_dump(mode="json")
+        if isinstance(output, dict):
+            return output
+        raise TypeError(f"Unsupported fake output payload: {output!r}")
+
     async def run(
         self,
         prompt: str,
@@ -185,7 +195,7 @@ class _QueuedAgent:
         model: str | None,
         model_settings: object | None = None,
         output_type: object,
-    ) -> SimpleNamespace:
+    ) -> "_FakeAgentRunResult":
         self.calls.append(
             {
                 "prompt": prompt,
@@ -195,7 +205,73 @@ class _QueuedAgent:
             }
         )
         index = min(len(self.calls) - 1, len(self.outputs) - 1)
-        return SimpleNamespace(output=self.outputs[index])
+        usage = RunUsage(
+            requests=1,
+            input_tokens=32 + index,
+            output_tokens=9 + index,
+            details={"reasoning_tokens": 5 + index},
+        )
+        return _FakeAgentRunResult(
+            output=self.outputs[index],
+            prompt=prompt,
+            model_name=str(model or "deterministic"),
+            usage_value=usage,
+        )
+
+
+@dataclass
+class _FakeAgentRunResult:
+    output: object
+    prompt: str
+    model_name: str
+    usage_value: RunUsage
+    created_at: datetime = datetime(2026, 3, 27, 9, 0, 0)
+
+    def all_messages_json(self, *, output_tool_return_content: str | None = None) -> bytes:
+        del output_tool_return_content
+        payload = _QueuedAgent._output_payload(self.output)
+        messages = [
+            {
+                "kind": "request",
+                "parts": [
+                    {
+                        "part_kind": "user-prompt",
+                        "content": self.prompt,
+                    }
+                ],
+            },
+            {
+                "kind": "response",
+                "model_name": self.model_name,
+                "usage": {
+                    "input_tokens": self.usage_value.input_tokens,
+                    "output_tokens": self.usage_value.output_tokens,
+                    "details": dict(self.usage_value.details),
+                },
+                "parts": [
+                    {
+                        "part_kind": "tool-call",
+                        "args": payload,
+                    }
+                ],
+            },
+            {
+                "kind": "request",
+                "parts": [
+                    {
+                        "part_kind": "tool-return",
+                        "content": payload,
+                    }
+                ],
+            },
+        ]
+        return json.dumps(messages, ensure_ascii=False).encode("utf-8")
+
+    def usage(self) -> RunUsage:
+        return self.usage_value
+
+    def timestamp(self) -> datetime:
+        return self.created_at
 
 
 @dataclass
@@ -206,9 +282,16 @@ class _FakeAgentBundle:
 
 
 class _MemoryExecutionIO:
-    def __init__(self, snapshot: AgentRunSnapshotModel, pages: list[WorkerSearchPageModel]) -> None:
+    def __init__(
+        self,
+        snapshot: AgentRunSnapshotModel,
+        pages: list[WorkerSearchPageModel],
+        *,
+        publish_error: Exception | None = None,
+    ) -> None:
         self.snapshot = snapshot
         self.pages = pages
+        self.publish_error = publish_error
         self.patches: list[RunPersistencePatchModel] = []
         self.requests: list[CtsSearchRequestModel] = []
         self.persisted_candidates: list[PersistCandidateSnapshotsRequestModel] = []
@@ -217,7 +300,7 @@ class _MemoryExecutionIO:
 
     async def load_run_snapshot(self, run_id: str) -> AgentRunSnapshotModel:
         assert run_id == self.snapshot.id
-        return self.snapshot.model_copy(deep=True)
+        return self.snapshot.compact_for_workflow()
 
     async def persist_run_patch(self, patch: RunPersistencePatchModel) -> AgentRunSnapshotModel:
         self.patches.append(patch)
@@ -245,7 +328,7 @@ class _MemoryExecutionIO:
             self.snapshot.langfuseTraceId = patch.langfuseTraceId
         if patch.langfuseTraceUrl is not None:
             self.snapshot.langfuseTraceUrl = patch.langfuseTraceUrl
-        return self.snapshot.model_copy(deep=True)
+        return self.snapshot.compact_for_workflow()
 
     async def search_candidates(self, request: CtsSearchRequestModel) -> WorkerSearchPageModel:
         self.requests.append(request)
@@ -275,6 +358,8 @@ class _MemoryExecutionIO:
 
     async def publish_trace(self, run_id: str) -> TracePublicationModel:
         self.published.append(run_id)
+        if self.publish_error is not None:
+            raise self.publish_error
         return TracePublicationModel(traceId=f"trace-{run_id}", traceUrl=f"http://langfuse/{run_id}")
 
 
@@ -537,6 +622,64 @@ def test_build_compact_round_ledger_returns_rounds_without_extraction_step() -> 
     ]
 
 
+def test_agent_run_snapshot_compact_for_workflow_strips_large_trace_payloads() -> None:
+    snapshot = _snapshot(max_rounds=3, schedule=[10, 5, 5])
+    strategy_step = append_agent_run_step(
+        [],
+        round_no=None,
+        step_type="strategy",
+        title="Strategy",
+        status="completed",
+        summary="Extracted strategy.",
+        payload={
+            "mustRequirements": ["Python"],
+            "coreRequirements": ["Java"],
+            "bonusRequirements": ["Vue"],
+            "excludeSignals": [],
+            "round1Query": {"keyword": "Python Java", "mustTerms": ["Python", "Java"]},
+            "promptText": "very large prompt",
+            "trace": {"observationType": "generation"},
+        },
+    )
+    analysis_step = append_agent_run_step(
+        [strategy_step],
+        round_no=1,
+        step_type="analysis",
+        title="Analysis",
+        status="completed",
+        summary="Analyzed candidates.",
+        payload={
+            "analyses": [
+                {
+                    "candidateId": "cand_1",
+                    "externalIdentityId": "cts_001",
+                    "name": "张晨",
+                    "score": 0.92,
+                    "reason": "强匹配",
+                    "evidence": ["Python"],
+                    "concerns": [],
+                    "promptText": "very large prompt",
+                    "trace": {"observationType": "generation"},
+                }
+            ],
+            "trace": {"observationType": "span"},
+        },
+    )
+    snapshot.steps = [
+        AgentRunStepModel.from_payload(strategy_step),
+        AgentRunStepModel.from_payload(analysis_step),
+    ]
+
+    compact = snapshot.compact_for_workflow()
+
+    assert "promptText" not in compact.steps[0].payload
+    assert "trace" not in compact.steps[0].payload
+    assert compact.steps[0].payload["mustRequirements"] == ["Python"]
+    assert "trace" not in compact.steps[1].payload
+    assert "promptText" not in compact.steps[1].payload["analyses"][0]
+    assert compact.steps[1].payload["analyses"][0]["reason"] == "强匹配"
+
+
 def test_build_search_strategy_rejects_blank_keyword_and_terms() -> None:
     with pytest.raises(ValidationError, match="did not contain any keyword"):
         build_search_strategy(
@@ -674,6 +817,125 @@ def test_execute_agent_run_forces_minimum_rounds_before_reflection_stop() -> Non
     assert stop_steps[-1].payload["source"] == "reflection"
     assert io.snapshot.status == "completed"
     assert io.published == ["agent_123"]
+
+
+def test_execute_agent_run_persists_trace_facts_for_replay() -> None:
+    io = _MemoryExecutionIO(
+        _snapshot(max_rounds=3, schedule=[10, 5, 5]),
+        [
+            _search_page(0, page_no=1, page_size=10),
+            _search_page(1, page_no=1, page_size=5),
+            _search_page(2, page_no=1, page_size=5),
+        ],
+    )
+    agents = _FakeAgentBundle(
+        strategy_extractor=_QueuedAgent([_strategy_output()]),
+        resume_matcher=_QueuedAgent(
+            [
+                ResumeMatcherOutputModel(score=0.92, summary="强匹配", evidence=["Python"], concerns=[]),
+                ResumeMatcherOutputModel(score=0.88, summary="匹配良好", evidence=["Agent"], concerns=[]),
+                ResumeMatcherOutputModel(score=0.85, summary="可进入 shortlist", evidence=["ReAct"], concerns=[]),
+            ]
+        ),
+        search_reflector=_QueuedAgent(
+            [
+                _reflection_output(continue_search=False),
+                _reflection_output(continue_search=False),
+                _reflection_output(continue_search=False),
+            ]
+        ),
+    )
+
+    result = asyncio.run(
+        _execute_agent_run(
+            io=io,
+            run_id="agent_123",
+            agents=agents,
+            runtime_settings=_runtime_settings(min_rounds=3, max_rounds=3),
+        )
+    )
+
+    strategy_step = next(step for step in io.snapshot.steps if step.stepType == "strategy")
+    first_search_step = next(step for step in io.snapshot.steps if step.stepType == "search")
+    first_analysis_step = next(step for step in io.snapshot.steps if step.stepType == "analysis")
+    first_reflection_step = next(step for step in io.snapshot.steps if step.stepType == "reflection")
+    finalize_step = next(step for step in io.snapshot.steps if step.stepType == "finalize")
+    first_analysis_item = first_analysis_step.payload["analyses"][0]
+    persisted_analysis = io.persisted_analyses[0].analyses[0]
+
+    assert result == "completed"
+    assert strategy_step.payload["trace"]["observationType"] == "generation"
+    assert strategy_step.payload["trace"]["prompt"]["name"] == "cvm.strategy-extractor"
+    assert strategy_step.payload["trace"]["input"]["promptText"] == strategy_step.payload["promptText"]
+    assert strategy_step.payload["trace"]["output"]["structuredOutput"]["summary"] == strategy_step.summary
+    assert first_search_step.payload["upstreamRequest"] == {"page": 1, "pageSize": 10}
+    assert first_search_step.payload["upstreamResponse"]["candidateIds"] == first_search_step.payload["candidateIds"]
+    assert first_search_step.payload["trace"]["observationType"] == "tool"
+    assert first_search_step.payload["trace"]["input"]["upstreamRequest"] == {"page": 1, "pageSize": 10}
+    assert (
+        first_search_step.payload["trace"]["output"]["upstreamResponse"]["candidateIds"]
+        == first_search_step.payload["candidateIds"]
+    )
+    assert first_analysis_step.payload["trace"]["observationType"] == "span"
+    assert first_analysis_item["trace"]["prompt"]["name"] == "cvm.resume-matcher"
+    assert first_analysis_item["trace"]["usageDetails"]["prompt_tokens"] > 0
+    assert persisted_analysis.trace is not None
+    assert persisted_analysis.trace.prompt is not None
+    assert persisted_analysis.trace.prompt.name == "cvm.resume-matcher"
+    assert first_reflection_step.payload["trace"]["prompt"]["name"] == "cvm.search-reflector"
+    assert first_reflection_step.payload["trace"]["output"]["structuredOutput"]["reason"] == first_reflection_step.summary
+    assert finalize_step.payload["trace"]["observationType"] == "span"
+    assert finalize_step.payload["trace"]["output"]["stopReason"] is not None
+
+
+def test_execute_agent_run_keeps_successful_completion_when_trace_publication_fails() -> None:
+    io = _MemoryExecutionIO(
+        _snapshot(max_rounds=3, schedule=[10, 5, 5]),
+        [
+            _search_page(0, page_no=1, page_size=10),
+            _search_page(1, page_no=1, page_size=5),
+            _search_page(2, page_no=1, page_size=5),
+        ],
+        publish_error=RuntimeError("langfuse unavailable"),
+    )
+    agents = _FakeAgentBundle(
+        strategy_extractor=_QueuedAgent([_strategy_output()]),
+        resume_matcher=_QueuedAgent(
+            [
+                ResumeMatcherOutputModel(score=0.92, summary="强匹配", evidence=["Python"], concerns=[]),
+                ResumeMatcherOutputModel(score=0.88, summary="匹配良好", evidence=["Agent"], concerns=[]),
+                ResumeMatcherOutputModel(score=0.85, summary="可进入 shortlist", evidence=["ReAct"], concerns=[]),
+            ]
+        ),
+        search_reflector=_QueuedAgent(
+            [
+                _reflection_output(continue_search=False),
+                _reflection_output(continue_search=False),
+                _reflection_output(continue_search=False),
+            ]
+        ),
+    )
+
+    result = asyncio.run(
+        _execute_agent_run(
+            io=io,
+            run_id="agent_123",
+            agents=agents,
+            runtime_settings=_runtime_settings(min_rounds=3, max_rounds=3),
+        )
+    )
+
+    observability_warning = next(step for step in io.snapshot.steps if step.stepType == "observability-warning")
+
+    assert result == "completed"
+    assert io.snapshot.status == "completed"
+    assert io.snapshot.finalShortlist
+    assert io.snapshot.errorCode is None
+    assert io.published == ["agent_123"]
+    assert observability_warning.status == "failed"
+    assert observability_warning.payload["warningCode"] == "LANGFUSE_TRACE_PUBLICATION_FAILED"
+    assert observability_warning.payload["terminalStatus"] == "completed"
+    assert observability_warning.payload["trace"]["level"] == "ERROR"
 
 
 def test_execute_agent_run_honors_extended_schedule_until_max_rounds() -> None:

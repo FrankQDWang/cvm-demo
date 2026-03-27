@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Protocol, cast
 from urllib.parse import urlsplit, urlunsplit
-
-import httpx
 
 from cvm_platform.application.agent_tracing import (
     AgentRunTraceHandle,
     AgentRunTracer,
     AgentTraceObservation,
     NoOpAgentRunTracer,
+    TracePromptReference,
     TraceObservationType,
 )
 from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue, to_json_object
@@ -40,11 +39,40 @@ class _SupportsLangfuseClient(Protocol):
     def flush(self) -> None: ...
     def get_trace_url(self, *, trace_id: str) -> str: ...
     def create_trace_id(self, *, seed: str) -> str: ...
+    def get_prompt(
+        self,
+        name: str,
+        *,
+        version: int | None = None,
+        label: str | None = None,
+        type: str = "text",
+    ) -> object: ...
+    def create_prompt(
+        self,
+        *,
+        name: str,
+        prompt: str | list[dict[str, object]],
+        labels: list[str],
+        type: str = "text",
+    ) -> object: ...
+    def update_prompt(
+        self,
+        *,
+        name: str,
+        version: int,
+        new_labels: list[str],
+    ) -> object: ...
 
 
 class _LangfuseObservationAdapter:
-    def __init__(self, observation: _SupportsObservation) -> None:
+    def __init__(
+        self,
+        observation: _SupportsObservation,
+        *,
+        prompt_resolver: Callable[[TracePromptReference], object | None],
+    ) -> None:
         self._observation = observation
+        self._prompt_resolver = prompt_resolver
 
     @contextmanager
     def start_observation(
@@ -56,6 +84,9 @@ class _LangfuseObservationAdapter:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
@@ -71,12 +102,23 @@ class _LangfuseObservationAdapter:
             observation_kwargs["model"] = model
         if version is not None:
             observation_kwargs["version"] = version
+        if prompt is not None:
+            resolved_prompt = self._prompt_resolver(prompt)
+            if resolved_prompt is not None:
+                observation_kwargs["prompt"] = resolved_prompt
+        if usage_details is not None:
+            observation_kwargs["usage_details"] = usage_details
+        if cost_details is not None:
+            observation_kwargs["cost_details"] = cost_details
         if level is not None:
             observation_kwargs["level"] = level
         if status_message is not None:
             observation_kwargs["status_message"] = status_message
         with self._observation.start_as_current_observation(**observation_kwargs) as observation:
-            yield _LangfuseObservationAdapter(observation)
+            yield _LangfuseObservationAdapter(
+                observation,
+                prompt_resolver=self._prompt_resolver,
+            )
 
     def update(
         self,
@@ -86,6 +128,9 @@ class _LangfuseObservationAdapter:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> None:
@@ -100,6 +145,14 @@ class _LangfuseObservationAdapter:
             update_kwargs["model"] = model
         if version is not None:
             update_kwargs["version"] = version
+        if prompt is not None:
+            resolved_prompt = self._prompt_resolver(prompt)
+            if resolved_prompt is not None:
+                update_kwargs["prompt"] = resolved_prompt
+        if usage_details is not None:
+            update_kwargs["usage_details"] = usage_details
+        if cost_details is not None:
+            update_kwargs["cost_details"] = cost_details
         if level is not None:
             update_kwargs["level"] = level
         if status_message is not None:
@@ -128,6 +181,9 @@ class _LangfuseAgentRunTraceHandle:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
@@ -138,6 +194,9 @@ class _LangfuseAgentRunTraceHandle:
             metadata=metadata,
             model=model,
             version=version,
+            prompt=prompt,
+            usage_details=usage_details,
+            cost_details=cost_details,
             level=level,
             status_message=status_message,
         ) as observation:
@@ -163,6 +222,7 @@ class LangfuseAgentRunTracer:
     def __init__(self, client: _SupportsLangfuseClient, *, display_base_url: str | None = None) -> None:
         self._client = client
         self._display_base_url = (display_base_url or "").rstrip("/")
+        self._prompt_cache: dict[tuple[str, str | None, str, str], object | None] = {}
 
     def _flush_quietly(self) -> None:
         try:
@@ -174,7 +234,7 @@ class LangfuseAgentRunTracer:
     def _build_trace_url(self, trace_id: str) -> str | None:
         try:
             internal_trace_url = self._client.get_trace_url(trace_id=trace_id)
-        except (LangfuseApiError, httpx.HTTPError, RuntimeError, TypeError, ValueError):
+        except Exception:
             return None
         if not self._display_base_url:
             return internal_trace_url
@@ -193,6 +253,44 @@ class LangfuseAgentRunTracer:
                 parsed_internal.fragment,
             )
         )
+
+    def _prompt_matches(self, resolved_prompt: object, prompt: TracePromptReference) -> bool:
+        return (
+            getattr(resolved_prompt, "name", None) == prompt.name
+            and getattr(resolved_prompt, "prompt", None) == prompt.prompt_text
+        )
+
+    def _resolve_prompt(self, prompt: TracePromptReference) -> object | None:
+        cache_key = (prompt.name, prompt.label, prompt.prompt_text, prompt.prompt_type)
+        if cache_key in self._prompt_cache:
+            return self._prompt_cache[cache_key]
+
+        resolved_prompt: object | None = None
+        if prompt.label is not None:
+            try:
+                candidate = self._client.get_prompt(
+                    prompt.name,
+                    label=prompt.label,
+                    type=prompt.prompt_type,
+                )
+            except Exception:
+                candidate = None
+            if candidate is not None and self._prompt_matches(candidate, prompt):
+                resolved_prompt = candidate
+
+        if resolved_prompt is None:
+            try:
+                resolved_prompt = self._client.create_prompt(
+                    name=prompt.name,
+                    prompt=prompt.prompt_text,
+                    labels=[prompt.label] if prompt.label is not None else [],
+                    type=prompt.prompt_type,
+                )
+            except Exception:
+                resolved_prompt = None
+
+        self._prompt_cache[cache_key] = resolved_prompt
+        return resolved_prompt
 
     @contextmanager
     def trace_run(
@@ -227,7 +325,10 @@ class LangfuseAgentRunTracer:
             trace_url = self._build_trace_url(trace_id)
             try:
                 yield _LangfuseAgentRunTraceHandle(
-                    _LangfuseObservationAdapter(root_observation),
+                    _LangfuseObservationAdapter(
+                        root_observation,
+                        prompt_resolver=self._resolve_prompt,
+                    ),
                     trace_id,
                     trace_url,
                 )

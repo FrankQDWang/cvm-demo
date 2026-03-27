@@ -11,6 +11,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
 export COMPOSE_PROJECT_NAME="${CVM_TEST_COMPOSE_PROJECT_NAME:-cvm-test}"
+export CVM_ALLOW_NON_LIVE_RUNTIME="true"
 export CVM_RESUME_SOURCE_MODE="mock"
 export CVM_AGENT_PROFILE="deterministic"
 export CVM_AGENT_MODEL="${CVM_AGENT_MODEL:-gpt-5.4-mini}"

@@ -56,6 +56,9 @@ HIGH_SIGNAL_TERMS = [
 
 CITY_TERMS = ["北京", "上海", "深圳", "广州", "杭州", "成都", "苏州", "武汉", "南京"]
 INPUT_JSON_MARKER = "INPUT_JSON:\n"
+STRATEGY_PROMPT_NAME = "cvm.strategy-extractor"
+RESUME_MATCH_PROMPT_NAME = "cvm.resume-matcher"
+SEARCH_REFLECTION_PROMPT_NAME = "cvm.search-reflector"
 
 
 @dataclass(frozen=True, slots=True)

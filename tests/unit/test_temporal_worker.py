@@ -43,9 +43,22 @@ def test_agent_run_workflow_delegates_to_execution_entrypoint(monkeypatch) -> No
 def test_run_worker_requires_openai_api_key_for_live_profile(monkeypatch) -> None:
     monkeypatch.setattr("cvm_worker.main.initialize_database", lambda: None)
     monkeypatch.setattr(worker_main.settings, "agent_profile", "live")
+    monkeypatch.setattr(worker_main.settings, "resume_source_mode", "cts")
+    monkeypatch.setattr(worker_main.settings, "allow_non_live_runtime", False)
     monkeypatch.setattr(worker_main.settings, "openai_api_key", "")
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live"):
+        asyncio.run(worker_main.run_worker())
+
+
+def test_run_worker_rejects_non_live_runtime_without_escape_hatch(monkeypatch) -> None:
+    monkeypatch.setattr("cvm_worker.main.initialize_database", lambda: None)
+    monkeypatch.setattr(worker_main.settings, "agent_profile", "deterministic")
+    monkeypatch.setattr(worker_main.settings, "resume_source_mode", "mock")
+    monkeypatch.setattr(worker_main.settings, "allow_non_live_runtime", False)
+    monkeypatch.setattr(worker_main.settings, "openai_api_key", "")
+
+    with pytest.raises(RuntimeError, match="Non-live runtime is disabled"):
         asyncio.run(worker_main.run_worker())
 
 
@@ -86,6 +99,8 @@ def test_run_worker_builds_temporal_worker_with_plugin(monkeypatch) -> None:
     monkeypatch.setattr("cvm_worker.main.Client.connect", fake_connect)
     monkeypatch.setattr("cvm_worker.main.Worker", FakeWorker)
     monkeypatch.setattr(worker_main.settings, "agent_profile", "deterministic")
+    monkeypatch.setattr(worker_main.settings, "resume_source_mode", "mock")
+    monkeypatch.setattr(worker_main.settings, "allow_non_live_runtime", True)
     monkeypatch.setattr(worker_main.settings, "openai_api_key", "")
     monkeypatch.setattr(worker_main.settings, "temporal_host", "127.0.0.1:7233")
     monkeypatch.setattr(worker_main.settings, "temporal_namespace", "default")

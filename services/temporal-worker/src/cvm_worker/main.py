@@ -26,8 +26,7 @@ logger = logging.getLogger("cvm.worker.startup")
 
 async def run_worker() -> None:
     initialize_database()
-    if settings.agent_profile.lower() == "live" and not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live.")
+    settings.assert_runtime_mode_allowed()
     logger.info(
         "Worker runtime ready build_id=%s temporal_namespace=%s temporal_visibility_backend=%s temporal_task_queue=%s agent_profile=%s agent_model=%s agent_min_rounds=%s agent_max_rounds=%s",
         settings.build_id,

@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     langfuse_host: str = "https://cloud.langfuse.com"
     langfuse_base_url: str = ""
     langfuse_environment: str = "local"
-    resume_source_mode: str = "mock"
+    allow_non_live_runtime: bool = False
+    resume_source_mode: str = "cts"
     cts_base_url: str = "https://link.hewa.cn"
     cts_tenant_key: str = ""
     cts_tenant_secret: str = ""
@@ -84,9 +85,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_agent_runtime(self) -> "Settings":
-        normalized_profile = self.agent_profile.strip().lower()
-        if normalized_profile not in {"live", "deterministic"}:
+        if self.normalized_agent_profile not in {"live", "deterministic"}:
             raise ValueError("CVM_AGENT_PROFILE must be either 'live' or 'deterministic'.")
+        if self.normalized_resume_source_mode not in {"cts", "mock"}:
+            raise ValueError("CVM_RESUME_SOURCE_MODE must be either 'cts' or 'mock'.")
         if self.agent_min_rounds > self.agent_max_rounds:
             raise ValueError("CVM_AGENT_MIN_ROUNDS must be less than or equal to CVM_AGENT_MAX_ROUNDS.")
         return self
@@ -94,6 +96,34 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def normalized_agent_profile(self) -> str:
+        return self.agent_profile.strip().lower()
+
+    @property
+    def normalized_resume_source_mode(self) -> str:
+        return self.resume_source_mode.strip().lower()
+
+    def assert_runtime_mode_allowed(self) -> None:
+        profile = self.normalized_agent_profile
+        resume_source_mode = self.normalized_resume_source_mode
+
+        if profile == "live" and not self.openai_api_key:
+            raise RuntimeError("OPENAI_API_KEY is required when CVM_AGENT_PROFILE=live.")
+        if profile == "live" and resume_source_mode == "cts":
+            return
+        if not self.allow_non_live_runtime:
+            raise RuntimeError(
+                "Non-live runtime is disabled. api/worker must start with "
+                "CVM_AGENT_PROFILE=live and CVM_RESUME_SOURCE_MODE=cts. "
+                "Set CVM_ALLOW_NON_LIVE_RUNTIME=true only for automated tests and deterministic harnesses."
+            )
+        if profile != "deterministic" or resume_source_mode != "mock":
+            raise RuntimeError(
+                "CVM_ALLOW_NON_LIVE_RUNTIME=true only permits "
+                "CVM_AGENT_PROFILE=deterministic with CVM_RESUME_SOURCE_MODE=mock."
+            )
 
 
 settings = Settings()
