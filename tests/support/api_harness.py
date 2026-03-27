@@ -14,7 +14,12 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
 from cvm_platform.api.dependencies import service_dependency
-from cvm_platform.application.agent_tracing import AgentRunTracer, AgentTraceObservation, TraceObservationType
+from cvm_platform.application.agent_tracing import (
+    AgentRunTracer,
+    AgentTraceObservation,
+    TraceObservationType,
+    TracePromptReference,
+)
 from cvm_platform.application.dto import AgentRunRecord
 from cvm_platform.application.service import PlatformService
 from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue
@@ -81,10 +86,25 @@ class _FakeTraceObservation:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
-        del name, as_type, input, metadata, model, version, level, status_message
+        del (
+            name,
+            as_type,
+            input,
+            metadata,
+            model,
+            version,
+            prompt,
+            usage_details,
+            cost_details,
+            level,
+            status_message,
+        )
         yield _FakeTraceObservation()
 
     def update(
@@ -95,10 +115,13 @@ class _FakeTraceObservation:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> None:
-        del input, output, metadata, model, version, level, status_message
+        del input, output, metadata, model, version, prompt, usage_details, cost_details, level, status_message
 
 
 class _FakeTraceHandle:
@@ -116,10 +139,25 @@ class _FakeTraceHandle:
         metadata: JsonValue | None = None,
         model: str | None = None,
         version: str | None = None,
+        prompt: TracePromptReference | None = None,
+        usage_details: dict[str, int] | None = None,
+        cost_details: dict[str, float] | None = None,
         level: str | None = None,
         status_message: str | None = None,
     ) -> Iterator[AgentTraceObservation]:
-        del name, as_type, input, metadata, model, version, level, status_message
+        del (
+            name,
+            as_type,
+            input,
+            metadata,
+            model,
+            version,
+            prompt,
+            usage_details,
+            cost_details,
+            level,
+            status_message,
+        )
         yield _FakeTraceObservation()
 
     def update_root(
