@@ -17,8 +17,10 @@ from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue, to_j
 from cvm_platform.settings.config import Settings
 
 try:
+    from langfuse.api import Error as LangfuseApiError
     from langfuse import Langfuse
 except ImportError:  # pragma: no cover - exercised only when dependency is missing
+    LangfuseApiError = RuntimeError  # type: ignore[assignment]
     Langfuse = None  # type: ignore[assignment]
 
 
@@ -232,7 +234,7 @@ class LangfuseAgentRunTracer:
     def _build_trace_url(self, trace_id: str) -> str | None:
         try:
             internal_trace_url = self._client.get_trace_url(trace_id=trace_id)
-        except Exception:
+        except (LangfuseApiError, RuntimeError, TypeError, ValueError, AttributeError):
             return None
         if not self._display_base_url:
             return internal_trace_url
@@ -271,7 +273,7 @@ class LangfuseAgentRunTracer:
                     label=prompt.label,
                     type=prompt.prompt_type,
                 )
-            except Exception:
+            except (LangfuseApiError, RuntimeError, TypeError, ValueError, AttributeError):
                 candidate = None
             if candidate is not None and self._prompt_matches(candidate, prompt):
                 resolved_prompt = candidate
@@ -284,7 +286,7 @@ class LangfuseAgentRunTracer:
                     labels=[prompt.label] if prompt.label is not None else [],
                     type=prompt.prompt_type,
                 )
-            except Exception:
+            except (LangfuseApiError, RuntimeError, TypeError, ValueError, AttributeError):
                 resolved_prompt = None
 
         self._prompt_cache[cache_key] = resolved_prompt
