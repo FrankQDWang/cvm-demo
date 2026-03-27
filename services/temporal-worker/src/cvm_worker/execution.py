@@ -21,7 +21,7 @@ from cvm_platform.application.agent_runs import (
     strategy_signature,
     strategy_to_query_payload,
 )
-from cvm_platform.application.agent_tracing import AgentRunTracer
+from cvm_platform.application.agent_tracing import AgentRunTracer, TraceObservationLevel
 from cvm_platform.domain.ports import ResumeSourcePort
 from cvm_platform.domain.errors import ExternalDependencyError
 from cvm_platform.domain.types import AgentRunConfigPayload, JsonObject, JsonValue, to_json_object, to_json_value
@@ -165,8 +165,7 @@ def _normalize_usage_details(usage: RunUsage) -> dict[str, int] | None:
     if usage.tool_calls:
         usage_details["tool_calls"] = usage.tool_calls
     for key, value in usage.details.items():
-        if isinstance(value, int):
-            usage_details[key] = value
+        usage_details[key] = value
     if not any(value > 0 for value in usage_details.values()):
         return None
     return usage_details
@@ -232,8 +231,8 @@ def _build_generation_trace_fact(
             structured_output=structured_output,
             response_message=response_message,
         ),
-        metadata=to_json_object(trace_metadata),
-        messageHistory=message_history,
+        metadata=cast(dict[str, object], cast(object, to_json_object(trace_metadata))),
+        messageHistory=cast(list[object], cast(object, message_history)),
         response=response_message,
         model=model_version,
         version=prompt_label,
@@ -253,15 +252,15 @@ def _build_span_trace_fact(
     input_payload: JsonObject,
     output_payload: JsonObject,
     metadata: JsonObject | None = None,
-    level: str | None = None,
+    level: TraceObservationLevel | None = None,
     status_message: str | None = None,
 ) -> ObservationTraceFactModel:
     return ObservationTraceFactModel(
         observationType="span",
         input=input_payload,
         output=output_payload,
-        metadata=to_json_object(metadata or {}),
-        level=cast(object, level),
+        metadata=cast(dict[str, object], cast(object, to_json_object(metadata or {}))),
+        level=level,
         statusMessage=status_message,
     )
 
@@ -295,7 +294,7 @@ def _build_search_trace_fact(
             }
         ),
         output=output_payload,
-        metadata=to_json_object({"tool": "cts.search_candidates"}),
+        metadata=cast(dict[str, object], cast(object, to_json_object({"tool": "cts.search_candidates"}))),
         level="ERROR" if page.errorCode is not None else None,
         statusMessage=page.errorMessage if page.errorCode is not None else None,
     )

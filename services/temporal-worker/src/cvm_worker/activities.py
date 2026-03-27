@@ -427,6 +427,16 @@ def _trace_prompt_reference(trace_fact: ObservationTraceFactModel) -> TracePromp
     )
 
 
+def _trace_json_value(value: object | None) -> JsonValue | None:
+    if value is None:
+        return None
+    return to_json_value(value)
+
+
+def _trace_json_object(value: dict[str, object]) -> JsonObject:
+    return to_json_object(value)
+
+
 def _start_trace_fact_observation(
     parent: AgentRunTraceHandle | AgentTraceObservation,
     *,
@@ -436,8 +446,8 @@ def _start_trace_fact_observation(
     return parent.start_observation(
         name=name,
         as_type=cast(TraceObservationType, trace_fact.observationType),
-        input=trace_fact.input,
-        metadata=trace_fact.metadata,
+        input=_trace_json_value(trace_fact.input),
+        metadata=_trace_json_object(trace_fact.metadata),
         model=trace_fact.model,
         version=trace_fact.version,
         prompt=_trace_prompt_reference(trace_fact),
@@ -453,7 +463,7 @@ def _update_trace_fact_observation(
     trace_fact: ObservationTraceFactModel,
 ) -> None:
     observation.update(
-        output=trace_fact.output,
+        output=_trace_json_value(trace_fact.output),
         prompt=_trace_prompt_reference(trace_fact),
         usage_details=trace_fact.usageDetails,
         cost_details=trace_fact.costDetails,

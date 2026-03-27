@@ -17,10 +17,8 @@ from cvm_platform.domain.types import AgentRuntimeConfigPayload, JsonValue, to_j
 from cvm_platform.settings.config import Settings
 
 try:
-    from langfuse.api import Error as LangfuseApiError
     from langfuse import Langfuse
 except ImportError:  # pragma: no cover - exercised only when dependency is missing
-    LangfuseApiError = RuntimeError  # type: ignore[assignment]
     Langfuse = None  # type: ignore[assignment]
 
 

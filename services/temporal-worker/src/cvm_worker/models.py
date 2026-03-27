@@ -510,11 +510,12 @@ def _compact_step_payload(step_type: str, payload: dict[str, object]) -> dict[st
         compact_payload: dict[str, object] = {}
         analyses = payload.get("analyses", [])
         if isinstance(analyses, list):
-            compact_payload["analyses"] = [
-                _compact_analysis_entry(item)
-                for item in analyses
-                if isinstance(item, dict)
-            ]
+            analysis_entries = cast(list[object], analyses)
+            compact_analyses: list[dict[str, object]] = []
+            for item in analysis_entries:
+                if isinstance(item, dict):
+                    compact_analyses.append(_compact_analysis_entry(cast(dict[str, object], item)))
+            compact_payload["analyses"] = compact_analyses
         return compact_payload
     if step_type == "shortlist":
         return _copy_selected_keys(
